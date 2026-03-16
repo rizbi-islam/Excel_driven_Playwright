@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}API Test Framework{% endblock %} — v10</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="/static/css/main.css"/>
+  {% block head %}{% endblock %}
+</head>
+<body>
+<div class="app">
+
+  <!-- ── Sidebar ──────────────────────────────────────────────── -->
+  <nav class="sidebar">
+    <a class="sidebar-brand" href="/">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+      </svg>
+      <span>API TestFW</span>
+      <span class="v-badge">v10</span>
+    </a>
+
+    <div class="nav-section">
+      <div class="nav-label">Overview</div>
+      <a href="/" class="nav-item {% if pg=='dashboard' %}active{% endif %}">
+        <span class="ni">🏠</span> Dashboard
+      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Testing</div>
+      <a href="/tester"   class="nav-item {% if pg=='tester' %}active{% endif %}">
+        <span class="ni">🚀</span> API Tester
+      </a>
+      <a href="/collections" class="nav-item {% if pg=='collections' %}active{% endif %}">
+        <span class="ni">📁</span> Collections
+      </a>
+      <a href="/generate" class="nav-item {% if pg=='generate' %}active{% endif %}">
+        <span class="ni">⚡</span> Auto-Generate
+      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Run Tests</div>
+      <a href="/run/smoke"      class="nav-item {% if pg=='smoke' %}active{% endif %}">
+        <span class="ni">💨</span> Smoke
+      </a>
+      <a href="/run/regression" class="nav-item {% if pg=='regression' %}active{% endif %}">
+        <span class="ni">🔁</span> Regression
+      </a>
+      <a href="/run/load"       class="nav-item {% if pg=='load' %}active{% endif %}">
+        <span class="ni">📈</span> Load
+      </a>
+      <a href="/run/stress"     class="nav-item {% if pg=='stress' %}active{% endif %}">
+        <span class="ni">🔥</span> Stress
+      </a>
+      <a href="/run/security"   class="nav-item {% if pg=='security' %}active{% endif %}">
+        <span class="ni">🔒</span> Security
+      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Library</div>
+      <a href="/library" class="nav-item {% if pg=='library' %}active{% endif %}">
+        <span class="ni">📚</span> Saved Cases
+      </a>
+      <a href="/history" class="nav-item {% if pg=='history' %}active{% endif %}">
+        <span class="ni">📋</span> Run History
+      </a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Setup</div>
+      <a href="/envs" class="nav-item {% if pg=='envs' %}active{% endif %}">
+        <span class="ni">🌐</span> Environments
+      </a>
+      <a href="/apis" class="nav-item {% if pg=='apis' %}active{% endif %}">
+        <span class="ni">🔗</span> My APIs
+      </a>
+      {% if user.role == 'admin' %}
+      <a href="/users"  class="nav-item {% if pg=='users' %}active{% endif %}">
+        <span class="ni">👥</span> Users
+      </a>
+      <a href="/access" class="nav-item {% if pg=='access' %}active{% endif %}">
+        <span class="ni">🛡️</span> Page Access
+      </a>
+      {% endif %}
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="user-card">
+        <div class="user-av">{{ user.username[0].upper() }}</div>
+        <div>
+          <div class="user-name">{{ user.username }}</div>
+          <div class="user-role">{{ user.role }}</div>
+        </div>
+        <a href="/logout" class="logout-link" title="Logout">⏏</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ── Main ─────────────────────────────────────────────────── -->
+  <div class="main">
+    <div class="topbar">
+      <span class="topbar-title">{% block page_title %}{% endblock %}</span>
+      <div class="topbar-actions">{% block topbar_actions %}{% endblock %}</div>
+    </div>
+
+    <div class="page {% block page_class %}{% endblock %}">
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+
+</div><!-- .app -->
+
+<div id="toast-container"></div>
+<script src="/static/js/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

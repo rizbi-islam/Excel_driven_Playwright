@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}User Management{% endblock %}
+{% block page_title %}👥 User Management{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-primary btn-sm" onclick="_showCreate()">+ New User</button>
+{% endblock %}
+
+{% block content %}
+<!-- Create user -->
+<div class="card" id="create-form" style="display:none">
+  <div class="card-header"><span class="card-title">Create New User</span></div>
+  <div class="card-body">
+    <div class="grid2" style="gap:.75rem;margin-bottom:.75rem">
+      <div class="form-group">
+        <label class="label">Username <span class="c-red">*</span></label>
+        <input id="new-username" class="input" placeholder="john.doe"/>
+      </div>
+      <div class="form-group">
+        <label class="label">Email <span class="c-red">*</span></label>
+        <input id="new-email" class="input" type="email" placeholder="john@example.com"/>
+      </div>
+    </div>
+    <div class="grid2" style="gap:.75rem">
+      <div class="form-group">
+        <label class="label">Password <span class="c-red">*</span> (min 6 chars)</label>
+        <input id="new-password" class="input" type="password" placeholder="••••••••"/>
+      </div>
+      <div class="form-group">
+        <label class="label">Role</label>
+        <select id="new-role" class="select">
+          <option value="tester">Tester — can run tests, use tester, manage cases</option>
+          <option value="viewer">Viewer — read-only: history and library</option>
+          <option value="admin">Admin — full access</option>
+        </select>
+      </div>
+    </div>
+    <p class="text-muted text-sm" style="margin-top:.6rem">
+      Page access is seeded from role defaults. You can customize it further on the
+      <a href="/access" style="color:var(--accent)">Page Access</a> page.
+    </p>
+  </div>
+  <div class="card-footer">
+    <button class="btn btn-primary" onclick="_createUser()">Create User</button>
+    <button class="btn btn-ghost"   onclick="_showCreate(false)">Cancel</button>
+  </div>
+</div>
+
+<!-- Users table -->
+<div class="card">
+  <div class="card-header"><span class="card-title">All Users</span></div>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Last Login</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+      {% for u in all_users %}
+      <tr id="user-row-{{ u.id }}">
+        <td class="text-mono text-muted text-sm">{{ u.id }}</td>
+        <td class="fw6">{{ u.username }}</td>
+        <td class="text-muted text-sm">{{ u.email }}</td>
+        <td>
+          <select class="select" style="font-size:.75rem;padding:.25rem .5rem;"
+                  onchange="_setRole({{ u.id }}, this.value)"
+                  {% if u.username == 'admin' %}disabled{% endif %}>
+            {% for r in ['admin','tester','viewer'] %}
+            <option value="{{ r }}" {% if u.role == r %}selected{% endif %}>{{ r }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td>
+          <span id="status-badge-{{ u.id }}" class="badge {% if u.is_active %}bg-green{% else %}bg-red{% endif %}">
+            {{ 'Active' if u.is_active else 'Disabled' }}
+          </span>
+        </td>
+        <td class="text-muted text-sm">
+          {{ u.last_login.strftime('%m/%d %H:%M') if u.last_login else 'Never' }}
+        </td>
+        <td>
+          <div class="flex gap-half">
+            {% if u.username != 'admin' %}
+            <button class="btn btn-ghost btn-xs" onclick="_toggleUser({{ u.id }})"
+                    id="toggle-btn-{{ u.id }}">
+              {{ '🔴 Disable' if u.is_active else '🟢 Enable' }}
+            </button>
+            {% endif %}
+            <button class="btn btn-ghost btn-xs" onclick="_resetPwd({{ u.id }})">🔑 Pwd</button>
+            <a href="/access" class="btn btn-ghost btn-xs">🛡 Access</a>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function _showCreate(show = true) {
+  document.getElementById('create-form').style.display = show ? '' : 'none';
+  if (show) document.getElementById('new-username').focus();
+}
+async function _createUser() {
+  const data = await apiFetch('/api/users/create', { body: {
+    username: document.getElementById('new-username').value.trim(),
+    email:    document.getElementById('new-email').value.trim(),
+    password: document.getElementById('new-password').value,
+    role:     document.getElementById('new-role').value,
+  }});
+  if (data.ok) { Toast.success('User created — page access seeded from role defaults'); location.reload(); }
+  else Toast.error(data.error || 'Create failed');
+}
+async function _toggleUser(uid) {
+  const data = await apiFetch(`/api/users/${uid}/toggle`, { body: {} });
+  if (data.ok) {
+    const badge = document.getElementById(`status-badge-${uid}`);
+    const btn   = document.getElementById(`toggle-btn-${uid}`);
+    if (data.is_active) {
+      badge.textContent = 'Active'; badge.className = 'badge bg-green';
+      btn.textContent   = '🔴 Disable';
+    } else {
+      badge.textContent = 'Disabled'; badge.className = 'badge bg-red';
+      btn.textContent   = '🟢 Enable';
+    }
+  } else Toast.error(data.error || 'Toggle failed');
+}
+async function _setRole(uid, role) {
+  if (!confirm(`Change this user's role to "${role}"? Their page access will be reset to ${role} defaults.`)) {
+    location.reload(); return;
+  }
+  const data = await apiFetch(`/api/users/${uid}/role`, { body: { role } });
+  if (data.ok) Toast.success(`Role updated to ${role}. Page access reset to defaults.`);
+  else Toast.error(data.error || 'Role update failed');
+}
+async function _resetPwd(uid) {
+  const pwd = prompt('New password (min 6 characters):');
+  if (!pwd || pwd.length < 6) { if (pwd !== null) Toast.error('Password too short'); return; }
+  const data = await apiFetch(`/api/users/${uid}/password`, { body: { password: pwd } });
+  if (data.ok) Toast.success('Password updated');
+  else Toast.error(data.error || 'Update failed');
+}
+</script>
+{% endblock %}

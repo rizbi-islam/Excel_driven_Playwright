@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}🏠 Dashboard{% endblock %}
+
+{% block content %}
+<!-- Stats -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Saved Cases</div>
+    <div class="stat-val c-blue">{{ stats.saved_cases or 0 }}</div>
+    <div class="stat-sub">in your library</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">My APIs</div>
+    <div class="stat-val c-purple">{{ stats.my_apis or 0 }}</div>
+    <div class="stat-sub">registered</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total Runs</div>
+    <div class="stat-val c-yellow">{{ stats.total_runs or 0 }}</div>
+    <div class="stat-sub">all time</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Last Pass Rate</div>
+    <div class="stat-val {% if (stats.last_rate or 0) >= 90 %}c-green{% elif (stats.last_rate or 0) >= 60 %}c-yellow{% else %}c-red{% endif %}">
+      {{ stats.last_rate or '—' }}{% if stats.last_rate %}%{% endif %}
+    </div>
+    <div class="stat-sub">most recent run</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Open Vulnerabilities</div>
+    <div class="stat-val {% if (stats.open_vulns or 0) > 0 %}c-red{% else %}c-green{% endif %}">
+      {{ stats.open_vulns or 0 }}
+    </div>
+    <div class="stat-sub">critical + high</div>
+  </div>
+</div>
+
+<!-- Quick actions -->
+<div class="card mt">
+  <div class="card-header"><span class="card-title">Quick Start</span></div>
+  <div class="card-body">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.75rem;">
+      <a href="/tester"   class="btn btn-secondary" style="justify-content:center;padding:.75rem">🚀 API Tester</a>
+      <a href="/generate" class="btn btn-secondary" style="justify-content:center;padding:.75rem">⚡ Auto-Generate</a>
+      <a href="/run/regression" class="btn btn-secondary" style="justify-content:center;padding:.75rem">🔁 Regression Run</a>
+      <a href="/run/smoke"      class="btn btn-secondary" style="justify-content:center;padding:.75rem">💨 Smoke Run</a>
+      <a href="/run/security"   class="btn btn-secondary" style="justify-content:center;padding:.75rem">🔒 Security Scan</a>
+      <a href="/library"        class="btn btn-secondary" style="justify-content:center;padding:.75rem">📚 Test Library</a>
+    </div>
+  </div>
+</div>
+
+<!-- Recent runs -->
+<div class="card mt">
+  <div class="card-header">
+    <span class="card-title">Recent Runs</span>
+    <a href="/history" class="btn btn-ghost btn-sm ml-auto">View All →</a>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>Label</th><th>Type</th><th>Source</th>
+          <th>Total</th><th>Pass Rate</th><th>Status</th><th>Date</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in recent_runs %}
+      <tr>
+        <td class="text-mono text-sm text-muted">{{ r.id }}</td>
+        <td class="fw6">{{ r.label or '—' }}</td>
+        <td><span class="badge bg-gray">{{ r.test_type }}</span></td>
+        <td class="text-muted text-sm">{{ r.source }}</td>
+        <td class="text-mono">{{ r.total }}</td>
+        <td>
+          {% set rate = r.pass_rate|float %}
+          <span class="badge {% if rate >= 80 %}bg-green{% elif rate >= 50 %}bg-yellow{% else %}bg-red{% endif %}">
+            {{ rate }}%
+          </span>
+        </td>
+        <td>
+          <span class="badge {% if r.status=='done' %}bg-green{% elif r.status=='running' %}bg-blue{% else %}bg-red{% endif %}">
+            {{ r.status }}
+          </span>
+        </td>
+        <td class="text-muted text-sm">
+          {{ r.started_at.strftime('%m/%d %H:%M') if r.started_at else '—' }}
+        </td>
+        <td><a href="/result/{{ r.id }}" class="btn btn-ghost btn-xs">View</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9">
+        <div class="empty-state">
+          <div class="empty-icon">🚦</div>
+          <div class="empty-text">No runs yet — start with Auto-Generate or upload an Excel file</div>
+        </div>
+      </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

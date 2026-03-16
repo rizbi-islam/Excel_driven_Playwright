@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Stress Tests{% endblock %}
+{% block page_title %}🔥 Stress Tests{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header"><span class="card-title">Stress Test Configuration</span>
+    <span class="text-muted text-sm">Ramps users from start → peak over ramp time, then holds</span>
+  </div>
+  <div class="card-body">
+    <div class="grid2" style="gap:.75rem;margin-bottom:.75rem">
+      <div class="form-group">
+        <label class="label">Base URL <span class="c-red">*</span></label>
+        <input id="base-url" class="input" placeholder="https://api.example.com"/>
+      </div>
+      <div class="form-group">
+        <label class="label">Label</label>
+        <input id="run-label" class="input" placeholder="stress run"/>
+      </div>
+    </div>
+    {% if envs %}
+    <div class="form-group" style="max-width:300px;margin-bottom:.75rem">
+      <label class="label">Environment</label>
+      <select class="select" onchange="if(this.value)document.getElementById('base-url').value=this.options[this.selectedIndex].dataset.base||''">
+        <option value="">— Select —</option>
+        {% for e in envs %}<option value="{{ e.id }}" data-base="{{ e.base_url }}">{{ e.name }}</option>{% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    <div class="grid3" style="gap:.75rem;margin-bottom:.75rem">
+      <div class="form-group">
+        <label class="label">Start Users</label>
+        <input id="start-users" class="input" type="number" value="1" min="1" max="50"/>
+      </div>
+      <div class="form-group">
+        <label class="label">Peak Users</label>
+        <input id="peak-users" class="input" type="number" value="50" min="1" max="200"/>
+      </div>
+      <div class="form-group">
+        <label class="label">Ramp Up (seconds)</label>
+        <input id="ramp-sec" class="input" type="number" value="60" min="10" max="600"/>
+      </div>
+    </div>
+
+    <!-- Endpoints -->
+    <div>
+      <div class="flex items-center gap-1" style="margin-bottom:.5rem">
+        <span class="label">Endpoints</span>
+        <button class="btn btn-ghost btn-xs" onclick="_addEpRow()">+ Add</button>
+        <span class="text-muted text-xs ml-auto">Leave blank to stress just the Base URL</span>
+      </div>
+      <table class="kv-table"><thead><tr><th style="width:100px">Method</th><th>Path</th><th style="width:28px"></th></tr></thead>
+        <tbody id="ep-tbody"></tbody></table>
+    </div>
+  </div>
+  <div class="card-footer">
+    <button class="btn btn-primary" onclick="_startStress()">▶ Start Stress Test</button>
+    <span class="text-muted text-sm">After ramp-up, holds at peak for 30s then stops.</span>
+  </div>
+</div>
+
+<div class="card mt" id="status-card" style="display:none">
+  <div class="card-body">
+    <div class="flex items-center gap-2"><span class="spin"></span>
+      <span id="status-text" class="fw6">Ramping up…</span>
+    </div>
+    <div class="prog-bar prog-indeterminate mt" style="margin-top:.75rem"><div class="prog-fill" style="width:100%"></div></div>
+  </div>
+</div>
+<div id="summary" style="display:none" class="mt"></div>
+
+<div class="card mt">
+  <div class="card-header"><span class="card-title">Recent Stress Runs</span>
+    <a href="/history" class="btn btn-ghost btn-sm ml-auto">All →</a>
+  </div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>#</th><th>Label</th><th>Requests</th><th>Pass Rate</th><th>Duration</th><th>Peak</th><th>Date</th><th></th></tr></thead>
+    <tbody>{% for r in runs %}
+    <tr>
+      <td class="text-mono text-muted text-sm">{{ r.id }}</td>
+      <td class="fw6">{{ r.label or '—' }}</td>
+      <td class="text-mono">{{ r.total }}</td>
+      <td>{% set rt=r.pass_rate|float %}<span class="badge {% if rt>=80 %}bg-green{% elif rt>=50 %}bg-yellow{% else %}bg-red{% endif %}">{{ rt }}%</span></td>
+      <td class="text-muted text-sm">{{ r.duration_sec or '—' }}s</td>
+      <td class="text-mono text-muted">{{ r.concurrency or '—' }}</td>
+      <td class="text-muted text-sm">{{ r.started_at.strftime('%m/%d %H:%M') if r.started_at else '—' }}</td>
+      <td><a href="/result/{{ r.id }}" class="btn btn-ghost btn-xs">View</a></td>
+    </tr>{% else %}
+    <tr><td colspan="8"><div class="empty-state"><div class="empty-icon">🔥</div><div class="empty-text">No stress runs yet</div></div></td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function _addEpRow(){
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td><select class="select ep-method" style="font-size:.78rem"><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select></td>
+    <td><input class="kv-key ep-path" placeholder="/users" style="width:100%"/></td>
+    <td><button class="kv-rm" onclick="this.closest('tr').remove()">✕</button></td>`;
+  document.getElementById('ep-tbody').appendChild(tr);
+}
+async function _startStress(){
+  const baseUrl=document.getElementById('base-url').value.trim();
+  if(!baseUrl){Toast.error('Base URL required');return;}
+  const endpoints=[];
+  document.querySelectorAll('#ep-tbody tr').forEach(tr=>{
+    const path=tr.querySelector('.ep-path')?.value?.trim();
+    if(path)endpoints.push({method:tr.querySelector('.ep-method')?.value||'GET',path});
+  });
+  const data=await apiFetch('/api/run/stress',{body:{
+    base_url:baseUrl,
+    label:document.getElementById('run-label').value.trim()||'stress run',
+    start_users:parseInt(document.getElementById('start-users').value)||1,
+    peak_users:parseInt(document.getElementById('peak-users').value)||50,
+    ramp_sec:parseInt(document.getElementById('ramp-sec').value)||60,
+    endpoints
+  }});
+  if(!data.ok){Toast.error(data.error||'Start failed');return;}
+  document.getElementById('status-card').style.display='';
+  Toast.info(`Stress run #${data.run_id} started — ramping to ${data.peak_users} users`);
+  pollRunStatus(data.run_id,
+    run=>document.getElementById('status-text').textContent=`Running… ${run.total} requests`,
+    (run,err)=>{
+      if(err||!run){Toast.error('Run failed');return;}
+      const s=document.getElementById('summary');
+      s.style.display='';
+      s.innerHTML=`<div class="card"><div class="card-body">
+        <div class="stats-grid" style="grid-template-columns:repeat(5,1fr)">
+          <div class="stat-card"><div class="stat-label">Total</div><div class="stat-val c-blue">${run.total}</div></div>
+          <div class="stat-card"><div class="stat-label">Passed</div><div class="stat-val c-green">${run.passed}</div></div>
+          <div class="stat-card"><div class="stat-label">Failed</div><div class="stat-val ${run.failed>0?'c-red':'c-green'}">${run.failed}</div></div>
+          <div class="stat-card"><div class="stat-label">Pass Rate</div><div class="stat-val ${run.pass_rate>=80?'c-green':run.pass_rate>=50?'c-yellow':'c-red'}">${run.pass_rate}%</div></div>
+          <div class="stat-card"><div class="stat-label">Duration</div><div class="stat-val text-muted">${run.duration_sec}s</div></div>
+        </div>
+        <div style="margin-top:.75rem"><a href="/result/${run.id}" class="btn btn-secondary btn-sm">📊 View Results</a></div>
+      </div></div>`;
+      document.getElementById('status-card').style.display='none';
+    }
+  );
+}
+</script>
+{% endblock %}

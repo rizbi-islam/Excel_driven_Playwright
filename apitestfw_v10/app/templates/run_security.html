@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block title %}Security Scan{% endblock %}
+{% block page_title %}🔒 Security Scan{% endblock %}
+
+{% block content %}
+<!-- Config -->
+<div class="card">
+  <div class="card-header"><span class="card-title">Security Scan Configuration</span></div>
+  <div class="card-body">
+    <div class="grid2" style="gap:.75rem;margin-bottom:.75rem">
+      <div class="form-group">
+        <label class="label">Base URL <span class="c-red">*</span></label>
+        <input id="base-url" class="input" placeholder="https://api.example.com"/>
+      </div>
+      <div class="form-group">
+        <label class="label">Label</label>
+        <input id="run-label" class="input" placeholder="security scan"/>
+      </div>
+    </div>
+    {% if envs %}
+    <div class="form-group" style="max-width:300px;margin-bottom:.75rem">
+      <label class="label">Environment</label>
+      <select class="select" onchange="if(this.value)document.getElementById('base-url').value=this.options[this.selectedIndex].dataset.base||''">
+        <option value="">— Select —</option>
+        {% for e in envs %}<option value="{{ e.id }}" data-base="{{ e.base_url }}">{{ e.name }}</option>{% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    <div class="grid2" style="gap:.75rem">
+      <div class="form-group">
+        <label class="label">Auth Type</label>
+        <select id="auth-type" class="select" onchange="_authChg()">
+          <option value="none">No Auth</option>
+          <option value="bearer">Bearer Token</option>
+          <option value="basic">Basic (Base64)</option>
+          <option value="apikey">API Key</option>
+        </select>
+      </div>
+      <div class="form-group" id="tok-wrap" style="display:none">
+        <label class="label">Token / Key</label>
+        <input id="auth-token" class="input" placeholder="token"/>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Endpoints -->
+<div class="card mt">
+  <div class="card-header">
+    <span class="card-title">Endpoints to Scan</span>
+    <button class="btn btn-ghost btn-sm ml-auto" onclick="_addEp()">+ Add</button>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th style="width:100px">Method</th><th>Path</th><th style="width:260px">Checks (comma-sep or "all")</th><th style="width:28px"></th></tr></thead>
+      <tbody id="ep-tbody"></tbody>
+    </table>
+  </div>
+  <div class="card-footer">
+    <button class="btn btn-secondary" id="gen-btn" onclick="_generateCases()">🔍 Generate Cases</button>
+    <span class="text-muted text-sm">We build a test case per endpoint. Review below before running.</span>
+  </div>
+</div>
+
+<!-- Generated cases review -->
+<div class="card mt" id="cases-card" style="display:none">
+  <div class="card-header">
+    <span class="card-title">Generated Security Cases</span>
+    <span class="text-muted text-sm" id="cases-count"></span>
+    <div class="ml-auto flex gap-1">
+      <label style="display:flex;align-items:center;gap:.35rem;font-size:.78rem;cursor:pointer">
+        <input type="checkbox" id="store-chk" class="kv-check"/> Save to Library
+      </label>
+      <button class="btn btn-primary" id="run-btn" onclick="_runSecurity()">▶ Run Security Scan</button>
+    </div>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr>
+        <th style="width:42px;text-align:center">Run</th>
+        <th style="width:80px">Method</th>
+        <th>Name / Endpoint</th>
+        <th style="width:200px">Checks</th>
+        <th style="width:80px">Probe</th>
+      </tr></thead>
+      <tbody id="cases-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Run status -->
+<div class="card mt" id="status-card" style="display:none">
+  <div class="card-body flex items-center gap-2">
+    <span class="spin"></span>
+    <span id="status-text" class="fw6">Running security checks…</span>
+    <a id="result-link" href="#" style="display:none" class="btn btn-ghost btn-sm ml-auto">View Results →</a>
+  </div>
+</div>
+
+<!-- Recent scans -->
+<div class="card mt">
+  <div class="card-header"><span class="card-title">Recent Security Scans</span>
+    <a href="/history" class="btn btn-ghost btn-sm ml-auto">All →</a>
+  </div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>#</th><th>Label</th><th>Checks</th><th>Passed</th><th>Issues</th><th>Date</th><th></th></tr></thead>
+    <tbody>{% for r in runs %}
+    <tr>
+      <td class="text-mono text-muted text-sm">{{ r.id }}</td>
+      <td class="fw6">{{ r.label or '—' }}</td>
+      <td class="text-mono">{{ r.total }}</td>
+      <td class="c-green text-mono">{{ r.passed }}</td>
+      <td class="{% if r.failed > 0 %}c-red fw6{% else %}c-green{% endif %} text-mono">{{ r.failed }}</td>
+      <td class="text-muted text-sm">{{ r.started_at.strftime('%m/%d %H:%M') if r.started_at else '—' }}</td>
+      <td><a href="/result/{{ r.id }}" class="btn btn-ghost btn-xs">View</a></td>
+    </tr>{% else %}
+    <tr><td colspan="7"><div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-text">No security scans yet</div></div></td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _generatedCases=[];
+let _baseUrl='';
+
+function _authChg(){
+  document.getElementById('tok-wrap').style.display=
+    document.getElementById('auth-type').value==='none'?'none':'';
+}
+function _addEp(){
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td><select class="select ep-method" style="font-size:.78rem"><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select></td>
+    <td><input class="kv-key ep-path" placeholder="/api/users" style="width:100%"/></td>
+    <td><input class="kv-key ep-checks" placeholder="all" value="all" style="width:100%"/></td>
+    <td><button class="kv-rm" onclick="this.closest('tr').remove()">✕</button></td>`;
+  document.getElementById('ep-tbody').appendChild(tr);
+}
+// Auto-add one row
+document.addEventListener('DOMContentLoaded',()=>_addEp());
+
+async function _generateCases(){
+  _baseUrl=document.getElementById('base-url').value.trim().replace(/\/+$/,'');
+  if(!_baseUrl){Toast.error('Base URL required');return;}
+  const endpoints=[];
+  document.querySelectorAll('#ep-tbody tr').forEach(tr=>{
+    const path=tr.querySelector('.ep-path')?.value?.trim();
+    endpoints.push({
+      method:tr.querySelector('.ep-method')?.value||'GET',
+      path:path||'',
+      checks:tr.querySelector('.ep-checks')?.value?.trim()||'all'
+    });
+  });
+  if(!endpoints.length){Toast.error('Add at least one endpoint');return;}
+  const btn=document.getElementById('gen-btn');
+  btn.disabled=true; btn.textContent='Generating…';
+  const data=await apiFetch('/api/run/security/generate',{body:{
+    base_url:_baseUrl,
+    endpoints,
+    auth_type:document.getElementById('auth-type').value,
+    auth_token:document.getElementById('auth-token')?.value||''
+  }});
+  btn.disabled=false; btn.textContent='🔍 Generate Cases';
+  if(!data.ok){Toast.error(data.error||'Generation failed');return;}
+  _generatedCases=data.cases.map(c=>({...c,_run:true}));
+  _renderCases(_generatedCases);
+}
+
+function _renderCases(cases){
+  const card=document.getElementById('cases-card');
+  const tbody=document.getElementById('cases-tbody');
+  card.style.display='';
+  document.getElementById('cases-count').textContent=cases.length+' cases';
+  tbody.innerHTML='';
+  cases.forEach((c,i)=>{
+    const ok=c.probe_ok;
+    const tr=document.createElement('tr');
+    tr.dataset.idx=i;
+    tr.style.opacity=c._run?'1':'0.45';
+    tr.innerHTML=`
+      <td style="text-align:center">
+        <button class="btn btn-ghost btn-xs" style="font-size:1rem;padding:.2rem .35rem" onclick="_toggleCaseRow(${i},this)">${c._run?'✅':'⏭'}</button>
+      </td>
+      <td><span class="badge ${c.method==='GET'?'bg-blue':c.method==='POST'?'bg-green':'bg-gray'} text-mono">${c.method}</span></td>
+      <td>
+        <div class="fw6 text-sm">${c.name}</div>
+        <div class="text-mono text-xs text-muted">${c.endpoint}</div>
+      </td>
+      <td class="text-sm text-muted">${c.check_types||'all'}</td>
+      <td><span class="${ok?'c-green':'c-red'} text-sm fw6">${c.probe_status||'—'}</span></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function _toggleCaseRow(i,btn){
+  _generatedCases[i]._run=!_generatedCases[i]._run;
+  btn.textContent=_generatedCases[i]._run?'✅':'⏭';
+  btn.closest('tr').style.opacity=_generatedCases[i]._run?'1':'0.45';
+}
+
+async function _runSecurity(){
+  const toRun=_generatedCases.filter(c=>c._run);
+  if(!toRun.length){Toast.error('No cases selected to run');return;}
+  const store=document.getElementById('store-chk').checked;
+  const btn=document.getElementById('run-btn');
+  btn.disabled=true; btn.textContent='Starting…';
+  const data=await apiFetch('/api/run/security',{body:{
+    base_url:_baseUrl,
+    label:document.getElementById('run-label').value.trim()||'security scan',
+    cases:toRun,
+    store_to_library:store
+  }});
+  btn.disabled=false; btn.textContent='▶ Run Security Scan';
+  if(!data.ok){Toast.error(data.error||'Start failed');return;}
+  if(store)Toast.info('Cases saved to library');
+  document.getElementById('status-card').style.display='';
+  Toast.info(`Security scan #${data.run_id} started — ${data.cases} checks`);
+  pollRunStatus(data.run_id,
+    run=>document.getElementById('status-text').textContent=`Running… ${run.total} checks so far`,
+    (run,err)=>{
+      if(err||!run){Toast.error('Scan failed');return;}
+      const issues=run.failed;
+      Toast[issues>0?'warn':'success'](`Scan complete: ${issues} issue${issues!==1?'s':''} found`);
+      document.getElementById('status-card').style.display='none';
+      const lnk=document.getElementById('result-link');
+      lnk.href='/result/'+run.id; lnk.style.display='';
+      document.getElementById('status-text').textContent=
+        `Complete — ${run.passed} passed, ${run.failed} issues`;
+      document.getElementById('status-card').style.display='';
+    }
+  );
+}
+</script>
+{% endblock %}

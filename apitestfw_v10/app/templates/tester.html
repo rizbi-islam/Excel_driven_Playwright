@@ -1,0 +1,314 @@
+{% extends "base.html" %}
+{% block title %}API Tester{% endblock %}
+{% block page_title %}🚀 API Tester{% endblock %}
+{% block page_class %}p-0{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-ghost btn-sm" onclick="Tester.importRequest()" title="Import request from JSON">⬆ Import</button>
+<button class="btn btn-ghost btn-sm" onclick="CollectionPanel.open()" title="Collections">📁 Collections</button>
+<button class="btn btn-secondary btn-sm" onclick="Tester.clear()">+ New Request</button>
+{% endblock %}
+
+{% block content %}
+<div class="tester-layout">
+
+  <!-- ── Left: Collections + History ──────────────────────────── -->
+  <div class="tester-sidebar">
+
+    <!-- Tab switcher -->
+    <div style="display:flex;border-bottom:1px solid var(--border)">
+      <button id="tab-hist" class="btn btn-ghost btn-sm" style="flex:1;border-radius:0;border-right:1px solid var(--border);font-size:.75rem"
+              onclick="Tester.showSidebar('history',this)">🕐 History</button>
+      <button id="tab-cols" class="btn btn-ghost btn-sm" style="flex:1;border-radius:0;font-size:.75rem"
+              onclick="Tester.showSidebar('collections',this)">📁 Collections</button>
+    </div>
+
+    <!-- History pane -->
+    <div id="sidebar-history" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+      <div style="padding:.4rem .65rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        {% if envs %}
+        <select class="select" style="font-size:.73rem;flex:1;margin-right:.4rem" onchange="Tester.fillFromEnv(this)">
+          <option value="">— Env quick-fill —</option>
+          {% for e in envs %}<option value="{{ e.base_url }}">{{ e.name }}</option>{% endfor %}
+        </select>
+        {% endif %}
+        <button class="btn btn-ghost btn-xs" onclick="Tester.clearHistory()" title="Clear history">🗑</button>
+      </div>
+      <div class="tester-hist-list" id="history-list">
+        {% for h in history %}
+        <div class="hist-item" onclick="Tester.loadHistory({{ h.id }}, this)">
+          <div class="flex gap-half items-center">
+            <span class="hist-method m-{{ h.method }}">{{ h.method }}</span>
+            <span class="hist-status {{ 's2xx' if h.response_status and h.response_status < 400 else ('s4xx' if h.response_status and h.response_status < 500 else ('s5xx' if h.response_status else 's0')) }}">{{ h.response_status or '—' }}</span>
+            <span class="text-muted text-xs ml-auto">{% if h.response_ms %}{{ h.response_ms|int }}ms{% endif %}</span>
+          </div>
+          <div class="hist-url">{{ h.url }}</div>
+        </div>
+        {% else %}
+        <div style="padding:1rem;color:var(--text3);font-size:.74rem;text-align:center">No history yet</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Collections pane -->
+    <div id="sidebar-collections" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+      <div style="padding:.45rem .65rem;border-bottom:1px solid var(--border);display:flex;gap:.3rem">
+        <input id="new-col-name" class="input" style="flex:1;font-size:.73rem" placeholder="New collection name…"
+               onkeydown="if(event.key==='Enter')CollectionPanel.create()"/>
+        <button class="btn btn-primary btn-xs" onclick="CollectionPanel.create()">+</button>
+      </div>
+      <div id="collections-list" style="overflow-y:auto;flex:1">
+        <div style="padding:1rem;color:var(--text3);font-size:.74rem;text-align:center">Loading…</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Right: Request + Response ─────────────────────────────── -->
+  <div class="tester-main">
+
+    <!-- URL bar -->
+    <div class="req-bar">
+      <select id="method-sel" class="method-sel">
+        <option>GET</option><option>POST</option><option>PUT</option>
+        <option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option>
+      </select>
+      <input id="url-input" class="url-input" placeholder="https://api.example.com/endpoint"
+             onkeydown="if(event.key==='Enter') Tester.send()"/>
+      <input id="timeout-inp" type="number" class="input" value="30" min="1" max="120"
+             style="width:58px;text-align:center" title="Timeout (seconds)"/>
+      <span id="send-spin" class="spin" style="display:none"></span>
+      <button id="send-btn" class="btn btn-primary" onclick="Tester.send()">▶ Send</button>
+      <button class="btn btn-secondary btn-sm" onclick="Tester.batchSend()" title="Use [v1,v2,v3] in a param/body field to iterate">⚡ Batch</button>
+    </div>
+
+    <!-- Request tabs -->
+    <div class="req-tabs">
+      <div class="req-tab active" onclick="Tester.showTab('params',this)">Params <span class="tab-badge" id="params-badge" style="display:none">0</span></div>
+      <div class="req-tab" onclick="Tester.showTab('auth',this)">Auth</div>
+      <div class="req-tab" onclick="Tester.showTab('headers',this)">Headers <span class="tab-badge" id="headers-badge" style="display:none">0</span></div>
+      <div class="req-tab" onclick="Tester.showTab('body',this)">Body</div>
+      <div class="req-tab" onclick="Tester.showTab('pre',this)">Pre-request</div>
+      <div class="req-tab" onclick="Tester.showTab('tests',this)">Tests</div>
+    </div>
+
+    <!-- Tab panels -->
+    <div style="max-height:230px;overflow-y:auto;border-bottom:1px solid var(--border)">
+
+      <!-- Params -->
+      <div class="tab-panel active" id="panel-params" style="padding:.65rem 1rem">
+        <p class="text-muted text-sm" style="margin-bottom:.4rem">
+          Query params — appended to URL. Set a value to <code>[v1,v2,v3]</code> then click ⚡ Batch to loop.
+        </p>
+        <table class="kv-table"><thead><tr><th style="width:26px"></th><th>Key</th><th>Value</th><th style="width:28px"></th></tr></thead>
+          <tbody id="params-tbody"></tbody></table>
+        <button class="kv-add" onclick="window.kvParams.addRow()">+ Add Parameter</button>
+      </div>
+
+      <!-- Auth -->
+      <div class="tab-panel" id="panel-auth" style="padding:.65rem 1rem">
+        <div style="max-width:260px" class="form-group">
+          <label class="label">Auth Type</label>
+          <select id="auth-type" class="select" onchange="Tester.onAuthChange()">
+            <option value="none">No Auth</option>
+            <option value="bearer">Bearer Token</option>
+            <option value="basic">Basic Auth (Base64)</option>
+            <option value="apikey">API Key Header</option>
+          </select>
+        </div>
+        <div id="auth-fields" style="margin-top:.65rem"></div>
+      </div>
+
+      <!-- Headers -->
+      <div class="tab-panel" id="panel-headers" style="padding:.65rem 1rem">
+        <table class="kv-table"><thead><tr><th style="width:26px"></th><th>Key</th><th>Value</th><th style="width:28px"></th></tr></thead>
+          <tbody id="headers-tbody"></tbody></table>
+        <button class="kv-add" onclick="window.kvHeaders.addRow()">+ Add Header</button>
+      </div>
+
+      <!-- Body -->
+      <div class="tab-panel" id="panel-body" style="padding:.65rem 1rem">
+
+        <!-- Body type — radio-style pills (JS controls active state) -->
+        <div class="body-type-bar" id="body-type-bar">
+          <button class="body-type-btn active" data-type="none"      onclick="Tester.setBodyType('none',this)">none</button>
+          <button class="body-type-btn"        data-type="json"      onclick="Tester.setBodyType('json',this)">JSON</button>
+          <button class="body-type-btn"        data-type="form"      onclick="Tester.setBodyType('form',this)">form-urlencoded</button>
+          <button class="body-type-btn"        data-type="multipart" onclick="Tester.setBodyType('multipart',this)">form-data</button>
+          <button class="body-type-btn"        data-type="xml"       onclick="Tester.setBodyType('xml',this)">XML</button>
+          <button class="body-type-btn"        data-type="graphql"   onclick="Tester.setBodyType('graphql',this)">GraphQL</button>
+          <button class="body-type-btn"        data-type="raw"       onclick="Tester.setBodyType('raw',this)">raw</button>
+        </div>
+
+        <!-- none -->
+        <div id="body-none-msg" class="text-muted text-sm">
+          No body. Correct for GET, DELETE, HEAD etc. The request will be sent without a body.
+        </div>
+
+        <!-- JSON / XML / GraphQL / raw textarea -->
+        <div id="body-textarea-wrap" style="display:none">
+          <textarea id="body-area" class="textarea input-mono" rows="6"
+                    style="font-size:.79rem;width:100%" placeholder=""></textarea>
+        </div>
+
+        <!-- form-urlencoded KV editor -->
+        <div id="body-form-wrap" style="display:none">
+          <p class="text-muted text-sm" style="margin-bottom:.4rem">
+            Key-value pairs sent as <code>application/x-www-form-urlencoded</code>.
+            Use <code>[v1,v2,v3]</code> in a value to iterate with ⚡ Batch.
+          </p>
+          <table class="kv-table"><thead><tr><th style="width:26px"></th><th>Key</th><th>Value</th><th style="width:28px"></th></tr></thead>
+            <tbody id="body-form-tbody"></tbody></table>
+          <button class="kv-add" onclick="window.kvBodyForm.addRow()">+ Add Field</button>
+        </div>
+
+        <!-- multipart/form-data KV editor -->
+        <div id="body-multipart-wrap" style="display:none">
+          <p class="text-muted text-sm" style="margin-bottom:.4rem">
+            Key-value pairs sent as <code>multipart/form-data</code> (use for file uploads via proxy or when the server requires multipart).
+          </p>
+          <table class="kv-table"><thead><tr><th style="width:26px"></th><th>Key</th><th>Value</th><th style="width:28px"></th></tr></thead>
+            <tbody id="body-multipart-tbody"></tbody></table>
+          <button class="kv-add" onclick="window.kvBodyMulti.addRow()">+ Add Field</button>
+        </div>
+
+      </div>
+
+      <!-- Pre-request Script -->
+      <div class="tab-panel" id="panel-pre" style="padding:.65rem 1rem;display:none">
+        <p class="text-muted text-sm" style="margin-bottom:.4rem">
+          Runs <strong>before</strong> the request is sent. Use <code>pm.variables.set("key","val")</code> to inject dynamic values.
+        </p>
+        <div class="script-hint" style="margin-bottom:.4rem">pm.variables.set("ts", Date.now()) &nbsp;·&nbsp; console.log("sending…")</div>
+        <textarea id="pre-script" class="textarea input-mono" rows="6" style="width:100%;font-size:.78rem"
+                  placeholder="# Pre-request script&#10;# pm.variables.set('token', 'abc123')&#10;# pm.variables.set('timestamp', str(int(time.time())))"></textarea>
+      </div>
+
+      <!-- Tests Script -->
+      <div class="tab-panel" id="panel-tests" style="padding:.65rem 1rem;display:none">
+        <p class="text-muted text-sm" style="margin-bottom:.4rem">
+          Runs <strong>after</strong> the response is received. Results show in the Tests panel below the response.
+        </p>
+        <div class="script-hint" style="margin-bottom:.4rem">pm.test("Status 200", lambda: pm.expect(pm.response.code).to_equal(200))</div>
+        <textarea id="tests-script" class="textarea input-mono" rows="6" style="width:100%;font-size:.78rem"
+                  placeholder="# Tests script&#10;# pm.test('Status OK', lambda: pm.expect(pm.response.code).to_equal(200))&#10;# pm.test('Has data', lambda: pm.expect(pm.response.json()).to_include('data'))&#10;# pm.variables.set('userId', pm.response.json()['id'])"></textarea>
+      </div>
+
+    </div>
+
+    <!-- Response panel -->
+    <div class="tester-response" style="flex:1;display:flex;flex-direction:column;min-height:0">
+
+      <div style="padding:.45rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:.75rem;flex-shrink:0;flex-wrap:wrap">
+        <span id="resp-status-code" style="font-size:.95rem;font-weight:700"></span>
+        <span id="resp-ms" class="text-muted text-sm"></span>
+        <span id="resp-size" class="text-muted text-sm"></span>
+        <span id="resp-error" class="c-red text-sm"></span>
+        <div class="ml-auto flex gap-half">
+          <button class="btn btn-ghost btn-xs resp-tab-btn active" onclick="Tester.showRespTab('body',this)">Body</button>
+          <button class="btn btn-ghost btn-xs resp-tab-btn" onclick="Tester.showRespTab('headers',this)">Headers</button>
+          <button class="btn btn-ghost btn-xs resp-tab-btn" onclick="Tester.showRespTab('tests',this)">Tests <span id="resp-tests-badge" style="display:none;background:var(--red);color:#fff;font-size:.6rem;padding:.1rem .3rem;border-radius:8px;margin-left:.2rem">0</span></button>
+          <button class="btn btn-ghost btn-xs" onclick="Tester.copyBody()">📋 Copy</button>
+          <button class="btn btn-secondary btn-sm" onclick="Tester.exportRequest()">⬇ Export</button>
+          <button class="btn btn-success btn-sm" id="save-case-btn" style="display:none" onclick="Tester.showSaveModal()">💾 Add as Test Case</button>
+        </div>
+      </div>
+
+      <div style="flex:1;overflow-y:auto;padding:.75rem 1rem">
+        <pre id="resp-body" class="code-block" style="background:transparent;border:none;padding:0;min-height:60px;color:var(--text3)">Send a request to see the response here.</pre>
+        <pre id="resp-headers-view" class="code-block" style="background:transparent;border:none;padding:0;display:none"></pre>
+        <div id="resp-tests-view" style="display:none">
+          <div id="resp-tests-list" style="display:flex;flex-direction:column;gap:.35rem"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Save as Test Case modal ──────────────────────────────────── -->
+<div id="save-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--bg1);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:1.5rem;width:480px;max-width:95vw;box-shadow:var(--shadow-lg)">
+    <div class="fw6" style="margin-bottom:1rem">💾 Add as Test Case</div>
+    <div class="grid2" style="gap:.65rem;margin-bottom:.65rem">
+      <div class="form-group">
+        <label class="label">Name <span class="c-red">*</span></label>
+        <input id="save-name" class="input" placeholder="e.g. Get brands list"/>
+      </div>
+      <div class="form-group">
+        <label class="label">Expected Status</label>
+        <input id="save-expected" class="input" type="number" value="200"/>
+      </div>
+    </div>
+    <div class="grid2" style="gap:.65rem;margin-bottom:.65rem">
+      <div class="form-group">
+        <label class="label">Test Type</label>
+        <select id="save-type" class="select">
+          <option value="regression">Regression</option>
+          <option value="smoke">Smoke</option>
+          <option value="security">Security</option>
+          <option value="load">Load</option>
+        </select>
+      </div>
+      {% if apis %}
+      <div class="form-group">
+        <label class="label">Link to API</label>
+        <select id="save-api" class="select">
+          <option value="">— None —</option>
+          {% for a in apis %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
+        </select>
+      </div>
+      {% endif %}
+    </div>
+    <div class="form-group" style="margin-bottom:1rem">
+      <label class="label">Description</label>
+      <input id="save-desc" class="input" placeholder="Optional"/>
+    </div>
+    <div class="flex gap-1">
+      <button class="btn btn-success" onclick="Tester.saveAsCase()">✅ Save to Library</button>
+      <button class="btn btn-secondary" onclick="CollectionPanel.showSaveToCollectionModal()">📁 Save to Collection</button>
+      <button class="btn btn-ghost" onclick="Tester.hideSaveModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Save to Collection modal ─────────────────────────────────── -->
+<div id="col-save-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:1001;align-items:center;justify-content:center">
+  <div style="background:var(--bg1);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:1.5rem;width:400px;max-width:95vw;box-shadow:var(--shadow-lg)">
+    <div class="fw6" style="margin-bottom:1rem">📁 Save to Collection</div>
+    <div class="form-group" style="margin-bottom:.65rem">
+      <label class="label">Request Name <span class="c-red">*</span></label>
+      <input id="col-req-name" class="input" placeholder="e.g. Get brands list"/>
+    </div>
+    <div class="form-group" style="margin-bottom:1rem">
+      <label class="label">Collection</label>
+      <select id="col-pick" class="select">
+        <option value="">Loading…</option>
+      </select>
+    </div>
+    <div class="flex gap-1">
+      <button class="btn btn-primary" onclick="CollectionPanel.saveToCollection()">Save</button>
+      <button class="btn btn-ghost" onclick="CollectionPanel.hideSaveModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/tester.js"></script>
+<script>
+var kvParams, kvHeaders, kvBodyForm, kvBodyMulti;
+document.addEventListener('DOMContentLoaded', () => {
+  kvParams      = new KVEditor('params-tbody',       'params-badge');
+  kvHeaders     = new KVEditor('headers-tbody',      'headers-badge');
+  kvBodyForm    = new KVEditor('body-form-tbody',    null);
+  kvBodyMulti   = new KVEditor('body-multipart-tbody', null);
+  kvParams.addRow();
+  kvHeaders.addRow();
+  Tester.init();
+  CollectionPanel.load();
+  // Default to history sidebar
+  Tester.showSidebar('history', document.getElementById('tab-hist'));
+});
+</script>
+{% endblock %}

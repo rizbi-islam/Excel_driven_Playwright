@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}Run #{{ run.id }} Result{% endblock %}
+{% block page_title %}📊 Run #{{ run.id }} — {{ run.label or run.test_type }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="/history" class="btn btn-ghost btn-sm">← Back to History</a>
+<button class="btn btn-success btn-sm" onclick="_saveToLib(false)">💾 Save to Library</button>
+<button class="btn btn-secondary btn-sm" onclick="_saveToLib(true)">💾 Passed Only</button>
+{% endblock %}
+
+{% block content %}
+<!-- Summary -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Total</div>
+    <div class="stat-val c-blue">{{ run.total }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Passed</div>
+    <div class="stat-val c-green">{{ run.passed }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Failed</div>
+    <div class="stat-val {% if run.failed > 0 %}c-red{% else %}c-green{% endif %}">{{ run.failed }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Pass Rate</div>
+    {% set rate = run.pass_rate|float %}
+    <div class="stat-val {% if rate>=80 %}c-green{% elif rate>=50 %}c-yellow{% else %}c-red{% endif %}">{{ rate }}%</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Duration</div>
+    <div class="stat-val text-muted">{{ run.duration_sec or '—' }}s</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Type</div>
+    <div class="stat-val" style="font-size:1.1rem">{{ run.test_type }}</div>
+    <div class="stat-sub">{{ run.source }} · #{{ run.id }}</div>
+  </div>
+</div>
+
+{% if metrics %}
+<!-- Load / Stress metrics -->
+<div class="card mt">
+  <div class="card-header"><span class="card-title">Performance Metrics</span></div>
+  <div class="tbl-wrap"><table>
+    <thead>
+      <tr><th>Endpoint</th><th>Requests</th><th>Pass</th><th>Fail</th>
+          <th>Min</th><th>Avg</th><th>P95</th><th>P99</th><th>Max</th><th>RPS</th><th>Error %</th></tr>
+    </thead>
+    <tbody>
+    {% for m in metrics %}
+    <tr>
+      <td class="text-mono text-sm">{{ m.endpoint }}</td>
+      <td class="text-mono">{{ m.total_requests }}</td>
+      <td class="c-green text-mono">{{ m.passed }}</td>
+      <td class="{% if m.failed > 0 %}c-red{% endif %} text-mono">{{ m.failed }}</td>
+      <td class="text-mono text-sm">{{ m.min_ms }}ms</td>
+      <td class="text-mono text-sm">{{ m.avg_ms }}ms</td>
+      <td class="text-mono text-sm">{{ m.p95_ms }}ms</td>
+      <td class="text-mono text-sm">{{ m.p99_ms }}ms</td>
+      <td class="text-mono text-sm">{{ m.max_ms }}ms</td>
+      <td class="text-mono text-sm c-blue">{{ m.rps }}</td>
+      <td class="{% if m.error_rate|float > 5 %}c-red{% else %}c-green{% endif %} text-mono text-sm">{{ m.error_rate }}%</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
+{% if findings %}
+<!-- Security findings -->
+<div class="card mt">
+  <div class="card-header">
+    <span class="card-title">Security Findings</span>
+    <span class="badge bg-red ml-auto">{{ findings|selectattr('passed','equalto',0)|list|length }} issues</span>
+  </div>
+  <div class="tbl-wrap"><table>
+    <thead>
+      <tr><th>Endpoint</th><th>Check</th><th>Severity</th><th>Result</th><th>Finding</th><th>Detail</th></tr>
+    </thead>
+    <tbody>
+    {% for f in findings %}
+    <tr>
+      <td class="text-mono text-sm">{{ f.endpoint }}</td>
+      <td class="fw6 text-sm">{{ f.check_type }}</td>
+      <td>
+        <span class="badge {% if f.severity=='critical' %}bg-red{% elif f.severity=='high' %}bg-red{% elif f.severity=='medium' %}bg-orange{% elif f.severity=='low' %}bg-yellow{% else %}bg-blue{% endif %}">
+          {{ f.severity }}
+        </span>
+      </td>
+      <td>
+        {% if f.passed %}<span class="badge bg-green">PASS</span>
+        {% else %}<span class="badge bg-red">FAIL</span>{% endif %}
+      </td>
+      <td class="text-sm">{{ f.finding }}</td>
+      <td class="text-muted text-sm" style="max-width:260px">{{ f.detail or '—' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
+{% if results %}
+<!-- Test results -->
+<div class="card mt">
+  <div class="card-header">
+    <span class="card-title">Test Results</span>
+    <div style="display:flex;gap:.4rem;margin-left:auto">
+      <button class="btn btn-ghost btn-xs" onclick="_filterRes('all', this)">All</button>
+      <button class="btn btn-ghost btn-xs" onclick="_filterRes('PASS', this)">Pass only</button>
+      <button class="btn btn-ghost btn-xs" onclick="_filterRes('FAIL', this)">Fail only</button>
+    </div>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr><th>Result</th><th>Method</th><th>Name</th><th>Endpoint</th>
+            <th>Expected</th><th>Actual</th><th>Time</th><th>Error</th></tr>
+      </thead>
+      <tbody id="results-tbody">
+      {% for r in results %}
+      <tr class="result-row" data-status="{{ r.status }}">
+        <td>
+          {% if r.status == 'PASS' %}<span class="badge bg-green">PASS</span>
+          {% else %}<span class="badge bg-red">FAIL</span>{% endif %}
+        </td>
+        <td>
+          {% set m = r.method %}
+          <span class="badge {% if m=='GET' %}bg-blue{% elif m=='POST' %}bg-green{% elif m in ['PUT','PATCH'] %}bg-yellow{% elif m=='DELETE' %}bg-red{% else %}bg-gray{% endif %} text-mono">{{ m }}</span>
+        </td>
+        <td class="fw6 text-sm" style="max-width:160px" title="{{ r.case_name }}">{{ r.case_name }}</td>
+        <td class="text-mono text-sm truncate" style="max-width:240px" title="{{ r.endpoint }}">{{ r.endpoint }}</td>
+        <td class="text-mono">{{ r.expected_status }}</td>
+        <td class="text-mono {% if r.actual_status and r.actual_status < 400 %}c-green{% else %}c-red{% endif %}">{{ r.actual_status or '—' }}</td>
+        <td class="text-mono text-sm">{{ r.response_ms }}ms</td>
+        <td class="text-muted text-sm" style="max-width:200px">{{ r.error_msg or '—' }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if not results and not metrics and not findings %}
+<div class="card mt">
+  <div class="card-body">
+    <div class="empty-state">
+      <div class="empty-icon">⏳</div>
+      <div class="empty-text">
+        {% if run.status == 'running' %}Run is still in progress…
+        {% elif run.status == 'error' %}Run encountered an error.
+        {% else %}No result data recorded for this run.{% endif %}
+      </div>
+      {% if run.status == 'running' %}
+      <button class="btn btn-secondary btn-sm" onclick="location.reload()">↻ Refresh</button>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function _saveToLib(onlyPassed) {
+  const data = await apiFetch('/api/run/{{ run.id }}/save-to-library', { body: { only_passed: onlyPassed } });
+  if (data.ok) Toast.success(`Saved ${data.saved} cases to library ✓`);
+  else         Toast.error(data.error || 'Save failed');
+}
+
+function _filterRes(status, btn) {
+  document.querySelectorAll('.result-row').forEach(tr => {
+    tr.style.display = (status === 'all' || tr.dataset.status === status) ? '' : 'none';
+  });
+  document.querySelectorAll('.result-row').forEach(tr => {});
+}
+</script>
+{% endblock %}
