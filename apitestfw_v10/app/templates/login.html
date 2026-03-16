@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Login — API Test Framework</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="/static/css/main.css"/>
+  <style>
+    body { display:flex; align-items:center; justify-content:center; min-height:100vh; background:var(--bg0); }
+    .login-box {
+      width:100%; max-width:380px;
+      background:var(--bg1); border:1px solid var(--border);
+      border-radius:var(--radius-xl); padding:2.5rem 2rem; box-shadow:var(--shadow-lg);
+    }
+    .login-logo { display:flex; align-items:center; gap:.7rem; margin-bottom:2rem; justify-content:center; }
+    .login-logo-icon { font-size:2rem; }
+    .login-logo-text { font-size:1.2rem; font-weight:700; color:var(--text1); }
+    .login-logo-sub  { font-size:.7rem; color:var(--text3); }
+    .login-title  { font-size:1rem; font-weight:600; margin-bottom:1.4rem; text-align:center; }
+    .login-footer { margin-top:1.5rem; text-align:center; font-size:.72rem; color:var(--text3); }
+    .error-msg { background:rgba(239,68,68,.12); border:1px solid var(--red); color:var(--red);
+                 border-radius:var(--radius); padding:.6rem .9rem; font-size:.79rem; margin-bottom:1rem; }
+    .login-field { margin-bottom:1rem; }
+    .login-btn { width:100%; margin-top:.5rem; padding:.6rem; font-size:.9rem; justify-content:center; }
+  </style>
+</head>
+<body>
+<div class="login-box">
+  <div class="login-logo">
+    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+    </svg>
+    <div>
+      <div class="login-logo-text">API Test Framework</div>
+      <div class="login-logo-sub">v10 — Professional API Testing</div>
+    </div>
+  </div>
+
+  <div class="login-title">Sign in to your account</div>
+
+  {% if error %}
+  <div class="error-msg">⚠ {{ error }}</div>
+  {% endif %}
+
+  <form method="POST" action="/login">
+    <div class="login-field form-group">
+      <label class="label">Username</label>
+      <input class="input" type="text" name="username" placeholder="admin"
+             autocomplete="username" autofocus required/>
+    </div>
+    <div class="login-field form-group">
+      <label class="label">Password</label>
+      <input class="input" type="password" name="password" placeholder="••••••••"
+             autocomplete="current-password" required/>
+    </div>
+    <button class="btn btn-primary login-btn" type="submit">Sign In</button>
+  </form>
+
+  <div class="login-footer">&nbsp;·&nbsp; Contact your admin for access</div>
+</div>
+</body>
+</html>

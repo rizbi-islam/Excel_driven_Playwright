@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Environments{% endblock %}
+{% block page_title %}🌐 Environments{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-primary btn-sm" onclick="_showCreate()">+ New Environment</button>
+{% endblock %}
+
+{% block content %}
+<!-- Create form -->
+<div class="card" id="create-form" style="display:none">
+  <div class="card-header"><span class="card-title">New Environment</span></div>
+  <div class="card-body">
+    <div class="grid2" style="gap:.75rem;margin-bottom:.75rem">
+      <div class="form-group">
+        <label class="label">Name <span class="c-red">*</span></label>
+        <input id="env-name" class="input" placeholder="Production"/>
+      </div>
+      <div class="form-group">
+        <label class="label">Base URL <span class="c-red">*</span></label>
+        <input id="env-url" class="input" placeholder="https://api.example.com"/>
+      </div>
+    </div>
+    <div class="grid3" style="gap:.75rem;margin-bottom:.75rem">
+      <div class="form-group">
+        <label class="label">Auth Type</label>
+        <select id="env-auth-type" class="select">
+          <option value="none">No Auth</option>
+          <option value="bearer">Bearer Token</option>
+          <option value="basic">Basic (Base64)</option>
+          <option value="apikey">API Key</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="label">Auth Token / Key</label>
+        <input id="env-auth-tok" class="input" placeholder="Optional"/>
+      </div>
+      <div class="form-group">
+        <label class="label">Set as Default</label>
+        <label style="display:flex;align-items:center;gap:.5rem;margin-top:.5rem">
+          <input type="checkbox" id="env-default" class="kv-check"/> Make default
+        </label>
+      </div>
+    </div>
+  </div>
+  <div class="card-footer">
+    <button class="btn btn-primary" onclick="_createEnv()">Save Environment</button>
+    <button class="btn btn-ghost" onclick="_showCreate(false)">Cancel</button>
+  </div>
+</div>
+
+<!-- Environments list -->
+<div class="card {% if not create_form %}{% endif %}">
+  <div class="card-header"><span class="card-title">Saved Environments</span></div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>Base URL</th><th>Auth</th><th>Default</th><th></th></tr></thead>
+      <tbody id="env-tbody">
+      {% for e in envs %}
+      <tr id="env-row-{{ e.id }}">
+        <td class="fw6">{{ e.name }}</td>
+        <td class="text-mono text-sm">{{ e.base_url }}</td>
+        <td class="text-muted text-sm">{{ e.auth_type }}</td>
+        <td>
+          {% if e.is_default %}
+          <span class="badge bg-green">Default</span>
+          {% else %}
+          <button class="btn btn-ghost btn-xs" onclick="_setDefault({{ e.id }})">Set default</button>
+          {% endif %}
+        </td>
+        <td>
+          <button class="btn btn-ghost btn-xs c-red" onclick="_deleteEnv({{ e.id }}, this)">🗑 Delete</button>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">
+        <div class="empty-state">
+          <div class="empty-icon">🌐</div>
+          <div class="empty-text">No environments yet. Create one to quickly fill base URLs on run pages.</div>
+        </div>
+      </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function _showCreate(show = true) {
+  document.getElementById('create-form').style.display = show ? '' : 'none';
+  if (show) document.getElementById('env-name').focus();
+}
+async function _createEnv() {
+  const data = await apiFetch('/api/envs/create', { body: {
+    name:       document.getElementById('env-name').value.trim(),
+    base_url:   document.getElementById('env-url').value.trim(),
+    auth_type:  document.getElementById('env-auth-type').value,
+    auth_token: document.getElementById('env-auth-tok').value.trim(),
+    is_default: document.getElementById('env-default').checked,
+  }});
+  if (data.ok) { Toast.success('Environment saved'); location.reload(); }
+  else Toast.error(data.error || 'Save failed');
+}
+async function _setDefault(id) {
+  const data = await apiFetch(`/api/envs/${id}/set-default`, { body: {} });
+  if (data.ok) { Toast.success('Default updated'); location.reload(); }
+  else Toast.error(data.error || 'Failed');
+}
+async function _deleteEnv(id, btn) {
+  if (!confirm('Delete this environment?')) return;
+  const data = await apiFetch(`/api/envs/${id}/delete`, { body: {} });
+  if (data.ok) { btn.closest('tr').remove(); Toast.success('Deleted'); }
+  else Toast.error(data.error || 'Delete failed');
+}
+</script>
+{% endblock %}

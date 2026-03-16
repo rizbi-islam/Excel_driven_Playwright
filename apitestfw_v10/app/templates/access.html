@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Page Access{% endblock %}
+{% block page_title %}🛡️ Page Access Control{% endblock %}
+
+{% block topbar_actions %}
+<button id="save-all-btn" class="btn btn-primary btn-sm" onclick="AccessAdmin.saveAll()">
+  💾 Save All Changes
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="margin-bottom:.75rem;padding:.9rem 1.2rem;background:var(--bg2);border-color:var(--accent)">
+  <div class="flex items-center gap-2">
+    <span style="font-size:1.1rem">🛡️</span>
+    <div>
+      <div class="fw6 text-sm">Per-User Access Control</div>
+      <div class="text-muted text-sm">
+        Each checkbox controls one user's access to one page, independently of their role.
+        Admin users always have full access and are not shown here.
+        Use <strong>Reset to Role</strong> to restore a user's defaults.
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if not all_users %}
+<div class="card">
+  <div class="card-body">
+    <div class="empty-state">
+      <div class="empty-icon">👥</div>
+      <div class="empty-text">No non-admin users found. Create users on the <a href="/users" style="color:var(--accent)">Users page</a>.</div>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">Access Matrix — Users × Pages</span>
+    <span class="text-muted text-sm">☑ = allowed &nbsp;☐ = denied</span>
+  </div>
+  <div class="access-grid-wrap">
+    <table class="access-grid">
+      <thead>
+        <tr>
+          <th class="col-user" style="min-width:150px">User</th>
+          {% for page_key, page_label, page_route in all_pages %}
+          <th style="text-align:center;cursor:pointer" title="{{ page_route }}"
+              onclick="AccessAdmin.togglePage('{{ page_key }}', !_pageAllChecked('{{ page_key }}'))">
+            <div style="writing-mode:vertical-rl;transform:rotate(180deg);padding:.3rem 0;font-size:.68rem;white-space:nowrap">
+              {{ page_label }}
+            </div>
+          </th>
+          {% endfor %}
+          <th style="min-width:130px;text-align:center">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for u in all_users %}
+      <tr>
+        <td class="col-user">
+          <div class="fw6 text-sm">{{ u.username }}</div>
+          <div class="text-muted text-xs">{{ u.role }}</div>
+        </td>
+        {% for page_key, page_label, page_route in all_pages %}
+        {% set allowed = matrix.get(u.id, {}).get(page_key, false) %}
+        <td style="text-align:center">
+          <input type="checkbox" class="access-chk"
+                 data-uid="{{ u.id }}" data-page="{{ page_key }}"
+                 {% if allowed %}checked{% endif %}/>
+        </td>
+        {% endfor %}
+        <td style="text-align:center">
+          <div class="flex gap-half" style="justify-content:center">
+            <button class="btn btn-ghost btn-xs" onclick="AccessAdmin.selectAll({{ u.id }})" title="Grant all">✅</button>
+            <button class="btn btn-ghost btn-xs" onclick="AccessAdmin.selectNone({{ u.id }})" title="Revoke all">❌</button>
+            <button class="btn btn-ghost btn-xs" onclick="AccessAdmin.resetUser({{ u.id }}, '{{ u.role }}')" title="Reset to role defaults">↺</button>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-footer">
+    <button class="btn btn-primary" onclick="AccessAdmin.saveAll()">💾 Save All Changes</button>
+    <span class="text-muted text-sm">Changes are not saved until you click this button.</span>
+  </div>
+</div>
+
+<!-- Legend -->
+<div class="card mt">
+  <div class="card-header"><span class="card-title">Page Reference</span></div>
+  <div class="card-body" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:.5rem">
+    {% for page_key, page_label, page_route in all_pages %}
+    <div style="display:flex;align-items:center;gap:.5rem;padding:.4rem;background:var(--bg2);border-radius:var(--radius)">
+      <span class="badge bg-gray text-mono text-xs">{{ page_key }}</span>
+      <span class="text-sm">{{ page_label }}</span>
+      <span class="text-muted text-xs ml-auto">{{ page_route }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/access.js"></script>
+<script>
+function _pageAllChecked(page) {
+  const checks = document.querySelectorAll(`.access-chk[data-page="${page}"]`);
+  return Array.from(checks).every(c => c.checked);
+}
+</script>
+{% endblock %}

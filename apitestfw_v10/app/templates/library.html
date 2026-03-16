@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% block title %}Test Library{% endblock %}
+{% block page_title %}📚 Test Case Library{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-secondary btn-sm" onclick="_showImport()">📄 Import Excel</button>
+<button class="btn btn-primary btn-sm" onclick="_showRunModal()">▶ Run Active Cases</button>
+{% endblock %}
+
+{% block content %}
+
+<!-- Import Excel panel -->
+<div class="card" id="import-panel" style="display:none">
+  <div class="card-header"><span class="card-title">Import Excel → Store to Library</span></div>
+  <div class="card-body">
+    <div class="grid2" style="gap:.75rem;margin-bottom:.75rem">
+      <div class="form-group">
+        <label class="label">Excel File <span class="c-red">*</span></label>
+        <input type="file" id="import-file" accept=".xlsx,.xls" class="input"/>
+      </div>
+      <div class="form-group">
+        <label class="label">Test Type (sheet to parse)</label>
+        <select id="import-type" class="select">
+          <option value="regression">Regression</option>
+          <option value="smoke">Smoke</option>
+          <option value="security">Security</option>
+          <option value="load">Load</option>
+          <option value="stress">Stress</option>
+        </select>
+      </div>
+    </div>
+    {% if apis %}
+    <div class="form-group" style="max-width:280px;margin-bottom:.75rem">
+      <label class="label">Link to API (optional)</label>
+      <select id="import-api" class="select">
+        <option value="">— None —</option>
+        {% for a in apis %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    <p class="text-muted text-sm">All rows in the sheet are stored with <strong>Run = ✅ Active</strong> by default. Toggle individual rows below after import.</p>
+  </div>
+  <div class="card-footer">
+    <button class="btn btn-primary" onclick="_importExcel()">📥 Import & Store</button>
+    <button class="btn btn-ghost" onclick="_showImport(false)">Cancel</button>
+  </div>
+</div>
+
+<!-- Run modal -->
+<div id="run-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--bg1);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:1.5rem;width:460px;max-width:95vw;box-shadow:var(--shadow-lg)">
+    <div class="fw6" style="margin-bottom:1rem">▶ Run Active Cases</div>
+    <div class="grid2" style="gap:.6rem;margin-bottom:.75rem">
+      <div class="form-group">
+        <label class="label">Base URL <span class="c-red">*</span></label>
+        <input id="run-base-url" class="input" placeholder="https://api.example.com"/>
+      </div>
+      <div class="form-group">
+        <label class="label">Label</label>
+        <input id="run-label" class="input" placeholder="regression run"/>
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:.75rem">
+      <label class="label">Test Type (filter active cases)</label>
+      <select id="run-type" class="select">
+        <option value="regression">Regression</option>
+        <option value="smoke">Smoke</option>
+        <option value="security">Security</option>
+        <option value="load">Load</option>
+        <option value="stress">Stress</option>
+      </select>
+    </div>
+    <p class="text-muted text-sm" style="margin-bottom:1rem">Only rows with ✅ (Active) for the selected type will be run.</p>
+    <div class="flex gap-1">
+      <button class="btn btn-primary" onclick="_runActiveCases()">▶ Run</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('run-modal').style.display='none'">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Run status -->
+<div class="card" id="run-status-card" style="display:none">
+  <div class="card-body flex items-center gap-2">
+    <span class="spin"></span>
+    <span id="run-status-text" class="fw6">Running…</span>
+    <a id="run-result-link" href="#" class="btn btn-ghost btn-sm ml-auto" style="display:none">View Results →</a>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="card mt" style="padding:.75rem 1.2rem">
+  <div class="flex gap-1 flex-wrap items-center">
+    <select id="f-type" class="select" style="font-size:.78rem;width:140px" onchange="_filter()">
+      <option value="">All Types</option>
+      {% for t in ['smoke','regression','load','stress','security'] %}
+      <option value="{{ t }}">{{ t|capitalize }}</option>{% endfor %}
+    </select>
+    {% if apis %}
+    <select id="f-api" class="select" style="font-size:.78rem;width:160px" onchange="_filter()">
+      <option value="">All APIs</option>
+      {% for a in apis %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
+    </select>
+    {% endif %}
+    <select id="f-active" class="select" style="font-size:.78rem;width:130px" onchange="_filter()">
+      <option value="">All rows</option>
+      <option value="1">Active only ✅</option>
+      <option value="0">Skipped only ⏭</option>
+    </select>
+    <input id="f-search" class="input" placeholder="Search name / endpoint…" style="width:200px;font-size:.78rem" oninput="_filter()"/>
+    <span class="text-muted text-sm ml-auto" id="visible-count">{{ cases|length }} cases</span>
+  </div>
+</div>
+
+<!-- Cases table -->
+<div class="card mt">
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:46px;text-align:center" title="Toggle run/skip">Run</th>
+          <th style="width:85px">Method</th>
+          <th>Name</th>
+          <th>Endpoint</th>
+          <th style="width:80px">Type</th>
+          <th style="width:70px">Expected</th>
+          <th style="width:90px">API</th>
+          <th style="width:60px">Saved</th>
+          <th style="width:36px"></th>
+        </tr>
+      </thead>
+      <tbody id="cases-tbody">
+      {% for c in cases %}
+      {% set active = c.is_active if c.is_active is not none else 1 %}
+      <tr id="case-row-{{ c.id }}"
+          data-type="{{ c.sheet_type }}"
+          data-api="{{ c.api_id or '' }}"
+          data-active="{{ '1' if active else '0' }}"
+          data-name="{{ (c.name or '')|lower }}"
+          data-ep="{{ (c.endpoint or '')|lower }}"
+          style="opacity:{{ '1' if active else '0.45' }}">
+        <td style="text-align:center">
+          <button class="btn btn-ghost btn-xs" id="toggle-{{ c.id }}"
+                  onclick="_toggleCase({{ c.id }}, this)"
+                  title="{{ 'Active — click to skip' if active else 'Skipped — click to activate' }}"
+                  style="font-size:1rem;padding:.2rem .35rem">
+            {{ '✅' if active else '⏭' }}
+          </button>
+        </td>
+        <td>
+          {% set m = c.method %}
+          <span class="badge {% if m=='GET' %}bg-blue{% elif m=='POST' %}bg-green{% elif m in ['PUT','PATCH'] %}bg-yellow{% elif m=='DELETE' %}bg-red{% else %}bg-gray{% endif %} text-mono">{{ m }}</span>
+        </td>
+        <td class="fw6 text-sm truncate" style="max-width:180px" title="{{ c.name }}">{{ c.name }}</td>
+        <td class="text-mono text-sm truncate" style="max-width:230px" title="{{ c.endpoint }}">{{ c.endpoint }}</td>
+        <td><span class="badge bg-gray text-xs">{{ c.sheet_type }}</span></td>
+        <td class="text-mono text-sm">{{ c.expected_status }}</td>
+        <td class="text-muted text-sm truncate" style="max-width:90px">{{ c.api_name or '—' }}</td>
+        <td class="text-muted text-xs">{{ c.saved_at.strftime('%m/%d') if c.saved_at else '—' }}</td>
+        <td>
+          <button class="btn btn-ghost btn-xs c-red" onclick="_del({{ c.id }}, this)">🗑</button>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9">
+        <div class="empty-state">
+          <div class="empty-icon">📚</div>
+          <div class="empty-text">No test cases yet.<br>Use <strong>Import Excel</strong> or <strong>Auto-Generate</strong> to add cases, or click <em>Add as Test Case</em> in the API Tester after a request.</div>
+        </div>
+      </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function _showImport(show=true){
+  document.getElementById('import-panel').style.display=show?'':'none';
+}
+function _showRunModal(){
+  document.getElementById('run-modal').style.display='flex';
+}
+
+function _filter(){
+  const type=document.getElementById('f-type').value;
+  const api=document.getElementById('f-api')?.value||'';
+  const active=document.getElementById('f-active').value;
+  const search=document.getElementById('f-search').value.toLowerCase();
+  let n=0;
+  document.querySelectorAll('#cases-tbody tr[data-type]').forEach(tr=>{
+    const ok=((!type||tr.dataset.type===type)&&
+              (!api||tr.dataset.api===api)&&
+              (!active||tr.dataset.active===active)&&
+              (!search||tr.dataset.name.includes(search)||tr.dataset.ep.includes(search)));
+    tr.style.display=ok?'':'none';
+    if(ok)n++;
+  });
+  document.getElementById('visible-count').textContent=n+' cases';
+}
+
+async function _toggleCase(id, btn){
+  const data=await apiFetch(`/api/cases/${id}/toggle`,{body:{}});
+  if(!data.ok){Toast.error(data.error||'Toggle failed');return;}
+  const row=document.getElementById(`case-row-${id}`);
+  if(data.is_active){
+    btn.textContent='✅'; btn.title='Active — click to skip';
+    row.style.opacity='1'; row.dataset.active='1';
+  } else {
+    btn.textContent='⏭'; btn.title='Skipped — click to activate';
+    row.style.opacity='0.45'; row.dataset.active='0';
+  }
+}
+
+async function _del(id, btn){
+  if(!confirm('Delete this test case?'))return;
+  const data=await apiFetch(`/api/cases/${id}/delete`,{body:{}});
+  if(data.ok){btn.closest('tr').remove();Toast.success('Deleted');}
+  else Toast.error(data.error||'Delete failed');
+}
+
+async function _importExcel(){
+  const file=document.getElementById('import-file')?.files[0];
+  if(!file){Toast.error('Select a file first');return;}
+  const form=new FormData();
+  form.append('file',file);
+  form.append('test_type',document.getElementById('import-type').value);
+  const api=document.getElementById('import-api')?.value;
+  if(api)form.append('api_id',api);
+  const resp=await fetch('/api/cases/import-excel',{method:'POST',body:form});
+  const data=await resp.json().catch(()=>({ok:false,error:'Server error'}));
+  if(data.ok){
+    Toast.success(`Imported ${data.saved} cases — refreshing…`);
+    if(data.warnings?.length)data.warnings.forEach(w=>Toast.warn(w));
+    setTimeout(()=>location.reload(),1200);
+  } else Toast.error(data.error||'Import failed');
+}
+
+async function _runActiveCases(){
+  const baseUrl=document.getElementById('run-base-url').value.trim();
+  const type=document.getElementById('run-type').value;
+  const label=document.getElementById('run-label').value.trim()||type+' run';
+  if(!baseUrl){Toast.error('Base URL required');return;}
+  document.getElementById('run-modal').style.display='none';
+  const data=await apiFetch('/api/cases/run',{body:{base_url:baseUrl,test_type:type,label}});
+  if(!data.ok){Toast.error(data.error||'Start failed');return;}
+  const card=document.getElementById('run-status-card');
+  card.style.display='';
+  document.getElementById('run-status-text').textContent=`Run #${data.run_id} started — ${data.total_cases} cases…`;
+  pollRunStatus(data.run_id,
+    run=>document.getElementById('run-status-text').textContent=`Running… ${run.passed+run.failed}/${run.total}`,
+    (run,err)=>{
+      if(err||!run){Toast.error('Run failed');return;}
+      Toast.success(`Done: ${run.passed}/${run.total} passed (${run.pass_rate}%)`);
+      const lnk=document.getElementById('run-result-link');
+      lnk.href='/result/'+run.id; lnk.style.display='';
+      document.getElementById('run-status-text').textContent=`Complete: ${run.passed}/${run.total} passed`;
+    }
+  );
+}
+</script>
+{% endblock %}

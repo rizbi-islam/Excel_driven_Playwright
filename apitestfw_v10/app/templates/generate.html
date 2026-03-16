@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Auto-Generate{% endblock %}
+{% block page_title %}⚡ Auto-Generate Test Suite{% endblock %}
+
+{% block content %}
+
+<!-- Step 1: Config -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">Step 1 — Target API</span>
+  </div>
+  <div class="card-body">
+    <div class="grid2" style="gap:.75rem;margin-bottom:.75rem">
+      <div class="form-group">
+        <label class="label">Base URL <span class="c-red">*</span></label>
+        <input id="base-url" class="input" placeholder="https://api.example.com"/>
+      </div>
+      {% if envs %}
+      <div class="form-group">
+        <label class="label">Or pick environment</label>
+        <select class="select" onchange="if(this.value)document.getElementById('base-url').value=this.options[this.selectedIndex].dataset.base">
+          <option value="">— Select —</option>
+          {% for e in envs %}<option value="{{ e.id }}" data-base="{{ e.base_url }}">{{ e.name }}</option>{% endfor %}
+        </select>
+      </div>
+      {% endif %}
+    </div>
+    <div class="grid3" style="gap:.75rem">
+      <div class="form-group">
+        <label class="label">Auth Type</label>
+        <select id="auth-type" class="select" onchange="_authChange()">
+          <option value="none">No Auth</option>
+          <option value="bearer">Bearer Token</option>
+          <option value="basic">Basic (Base64)</option>
+          <option value="apikey">API Key</option>
+        </select>
+      </div>
+      <div class="form-group" id="auth-tok-wrap" style="display:none">
+        <label class="label">Token / Key Value</label>
+        <input id="auth-token" class="input input-mono" placeholder="your-token"/>
+      </div>
+      <div class="form-group">
+        <label class="label">Cases per endpoint</label>
+        <div style="display:flex;gap:.4rem;align-items:center">
+          <input id="cases-per-ep" class="input" type="number" value="3" min="1" max="20" style="width:70px"/>
+          <span class="text-muted text-sm">per type selected below</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2: Test types -->
+<div class="card mt">
+  <div class="card-header"><span class="card-title">Step 2 — Test Types to Generate</span></div>
+  <div class="card-body">
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+      {% for ttype, icon, desc in [
+        ('regression','🔁','Happy path + edge cases'),
+        ('smoke','💨','Single happy-path per endpoint'),
+        ('security','🔒','HTTPS, CORS, auth bypass, SQLi, XSS'),
+        ('load','📈','Concurrency/duration template'),
+        ('stress','🔥','Ramp-up template'),
+      ] %}
+      <label class="type-check-label" id="lbl-{{ ttype }}" title="{{ desc }}">
+        <input type="checkbox" class="kv-check type-check" value="{{ ttype }}"
+               {% if ttype in ['regression','smoke'] %}checked{% endif %}
+               onchange="_updateTypeLabel('{{ ttype }}', this)"/>
+        <span>{{ icon }} {{ ttype|capitalize }}</span>
+        <span class="text-muted text-xs" style="margin-left:.2rem">{{ desc }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Step 3: Endpoints -->
+<div class="card mt">
+  <div class="card-header">
+    <span class="card-title">Step 3 — Endpoints</span>
+    <span class="text-muted text-sm">Add all endpoints you want to test. Body/params optional.</span>
+    <button class="btn btn-ghost btn-sm ml-auto" onclick="Generate.addRow()">+ Add Row</button>
+  </div>
+  <div class="tbl-wrap">
+    <table id="ep-table">
+      <thead>
+        <tr>
+          <th style="width:100px">Method</th>
+          <th>Path</th>
+          <th style="width:160px">Name</th>
+          <th style="width:90px">Expected</th>
+          <th style="width:120px">Body Type</th>
+          <th style="width:200px">Body (JSON) / Params</th>
+          <th style="width:36px"></th>
+        </tr>
+      </thead>
+      <tbody id="ep-tbody"></tbody>
+    </table>
+  </div>
+  <div class="card-footer">
+    <button id="analyze-btn" class="btn btn-primary" onclick="Generate.analyze()">
+      🔍 Analyze &amp; Generate Cases
+    </button>
+    <span class="text-muted text-sm">
+      We probe each endpoint, then generate test cases for every selected type.
+    </span>
+  </div>
+</div>
+
+<!-- Step 4: Review generated cases -->
+<div class="card mt" id="results-card" style="display:none">
+  <div class="card-header">
+    <span class="card-title">Step 4 — Review &amp; Save</span>
+    <span class="text-muted text-sm" id="cases-count"></span>
+    <div class="ml-auto flex gap-1">
+      <button class="btn btn-success" onclick="Generate.saveToLibrary()">💾 Save All to Library</button>
+      <button class="btn btn-secondary btn-sm" onclick="Generate.downloadExcel()">📥 Download Excel</button>
+    </div>
+  </div>
+  <!-- Tab per type -->
+  <div id="type-tabs" style="display:flex;border-bottom:1px solid var(--border);padding:0 1rem;gap:.1rem"></div>
+  <div id="type-panels"></div>
+  <div class="card-footer">
+    <button class="btn btn-success" onclick="Generate.saveToLibrary()">💾 Save All Active to Library</button>
+    <button class="btn btn-secondary btn-sm" onclick="Generate.downloadExcel()">📥 Download Excel</button>
+    <span class="text-muted text-sm">
+      Toggle ✅/⏭ to include/skip individual cases. After saving, go to
+      <a href="/library" style="color:var(--accent)">Library</a> to run them.
+    </span>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/generate.js"></script>
+<style>
+.type-check-label {
+  display:flex;align-items:center;gap:.4rem;
+  padding:.45rem .75rem;
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);
+  cursor:pointer;font-size:.8rem;font-weight:500;
+  transition:border-color .12s,background .12s;
+}
+.type-check-label:hover { border-color:var(--border2); }
+.type-check-label:has(input:checked) { border-color:var(--accent);background:var(--accent-dim);color:var(--accent); }
+</style>
+<script>
+function _authChange(){
+  document.getElementById('auth-tok-wrap').style.display =
+    document.getElementById('auth-type').value === 'none' ? 'none' : '';
+}
+function _updateTypeLabel(t, chk) {
+  const lbl = document.getElementById('lbl-'+t);
+  if(lbl) lbl.style.borderColor = chk.checked ? 'var(--accent)' : '';
+}
+document.addEventListener('DOMContentLoaded', () => Generate.init());
+</script>
+{% endblock %}

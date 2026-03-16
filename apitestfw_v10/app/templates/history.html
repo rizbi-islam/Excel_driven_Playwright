@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Run History{% endblock %}
+{% block page_title %}📋 Run History{% endblock %}
+
+{% block topbar_actions %}
+<select id="filter-type" class="select" style="font-size:.78rem" onchange="_filterRuns()">
+  <option value="">All Types</option>
+  {% for t in ['smoke','regression','load','stress','security'] %}
+  <option value="{{ t }}">{{ t|capitalize }}</option>
+  {% endfor %}
+</select>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">All Runs</span>
+    <span class="text-muted text-sm" id="run-count">{{ runs|length }} runs</span>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr><th>#</th><th>Label</th><th>Type</th><th>Source</th><th>Total</th><th>Passed</th><th>Failed</th><th>Pass Rate</th><th>Duration</th><th>Status</th><th>Date</th><th></th></tr>
+      </thead>
+      <tbody id="runs-tbody">
+      {% for r in runs %}
+      <tr data-type="{{ r.test_type }}">
+        <td class="text-mono text-muted text-sm">{{ r.id }}</td>
+        <td class="fw6" style="max-width:180px" title="{{ r.label }}">{{ r.label or '—' }}</td>
+        <td><span class="badge bg-gray">{{ r.test_type }}</span></td>
+        <td class="text-muted text-sm">{{ r.source }}</td>
+        <td class="text-mono">{{ r.total }}</td>
+        <td class="text-mono c-green">{{ r.passed }}</td>
+        <td class="text-mono {% if r.failed > 0 %}c-red{% else %}c-green{% endif %}">{{ r.failed }}</td>
+        <td>
+          {% set rate = r.pass_rate|float %}
+          <span class="badge {% if rate>=80 %}bg-green{% elif rate>=50 %}bg-yellow{% else %}bg-red{% endif %}">{{ rate }}%</span>
+        </td>
+        <td class="text-muted text-sm">{{ r.duration_sec or '—' }}s</td>
+        <td>
+          <span class="badge {% if r.status=='done' %}bg-green{% elif r.status=='running' %}bg-blue{% else %}bg-red{% endif %}">
+            {{ r.status }}
+          </span>
+        </td>
+        <td class="text-muted text-sm">{{ r.started_at.strftime('%m/%d %H:%M') if r.started_at else '—' }}</td>
+        <td><a href="/result/{{ r.id }}" class="btn btn-ghost btn-xs">View</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="12">
+        <div class="empty-state">
+          <div class="empty-icon">📋</div>
+          <div class="empty-text">No runs yet. Go to any Run page to execute tests.</div>
+        </div>
+      </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function _filterRuns() {
+  const type = document.getElementById('filter-type').value;
+  let visible = 0;
+  document.querySelectorAll('#runs-tbody tr[data-type]').forEach(tr => {
+    const show = !type || tr.dataset.type === type;
+    tr.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('run-count').textContent = `${visible} runs`;
+}
+</script>
+{% endblock %}

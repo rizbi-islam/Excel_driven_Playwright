@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}My APIs{% endblock %}
+{% block page_title %}🔗 My APIs{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-primary btn-sm" onclick="_showCreate()">+ Register API</button>
+{% endblock %}
+
+{% block content %}
+<div class="card" id="create-form" style="display:none">
+  <div class="card-header"><span class="card-title">Register New API</span></div>
+  <div class="card-body">
+    <div class="grid2" style="gap:.75rem;margin-bottom:.75rem">
+      <div class="form-group">
+        <label class="label">API Name <span class="c-red">*</span></label>
+        <input id="api-name" class="input" placeholder="User Service"/>
+      </div>
+      <div class="form-group">
+        <label class="label">Base URL <span class="c-red">*</span></label>
+        <input id="api-url" class="input" placeholder="https://api.example.com"/>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="label">Description</label>
+      <input id="api-desc" class="input" placeholder="Optional description"/>
+    </div>
+  </div>
+  <div class="card-footer">
+    <button class="btn btn-primary" onclick="_createApi()">Register API</button>
+    <button class="btn btn-ghost"   onclick="_showCreate(false)">Cancel</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><span class="card-title">Registered APIs</span></div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>Base URL</th><th>Description</th><th>Created</th><th></th></tr></thead>
+      <tbody>
+      {% for a in apis %}
+      <tr>
+        <td class="fw6">{{ a.name }}</td>
+        <td class="text-mono text-sm">{{ a.base_url }}</td>
+        <td class="text-muted text-sm">{{ a.description or '—' }}</td>
+        <td class="text-muted text-sm">{{ a.created_at.strftime('%m/%d/%Y') if a.created_at else '—' }}</td>
+        <td>
+          <div class="flex gap-half">
+            <a href="/generate?base={{ a.base_url|urlencode }}" class="btn btn-ghost btn-xs">⚡ Generate</a>
+            <button class="btn btn-ghost btn-xs c-red" onclick="_deleteApi({{ a.id }}, this)">🗑</button>
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">
+        <div class="empty-state">
+          <div class="empty-icon">🔗</div>
+          <div class="empty-text">No APIs registered yet. Register one to associate test cases and runs.</div>
+        </div>
+      </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function _showCreate(show = true) {
+  document.getElementById('create-form').style.display = show ? '' : 'none';
+  if (show) document.getElementById('api-name').focus();
+}
+async function _createApi() {
+  const data = await apiFetch('/api/apis/create', { body: {
+    name:        document.getElementById('api-name').value.trim(),
+    base_url:    document.getElementById('api-url').value.trim(),
+    description: document.getElementById('api-desc').value.trim(),
+  }});
+  if (data.ok) { Toast.success('API registered'); location.reload(); }
+  else Toast.error(data.error || 'Save failed');
+}
+async function _deleteApi(id, btn) {
+  if (!confirm('Delete this API? Test cases linked to it will not be deleted.')) return;
+  const data = await apiFetch(`/api/apis/${id}/delete`, { body: {} });
+  if (data.ok) { btn.closest('tr').remove(); Toast.success('Deleted'); }
+  else Toast.error(data.error || 'Delete failed');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% block title %}Collections{% endblock %}
+{% block page_title %}📁 Collections{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-primary btn-sm" onclick="CM.createCollection()">+ New Collection</button>
+{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:280px 1fr;gap:1rem;height:calc(100vh - 100px);min-height:0">
+
+  <!-- ── Left: collection list ──────────────────────────────── -->
+  <div style="display:flex;flex-direction:column;gap:.5rem;overflow-y:auto">
+    <div id="col-list">
+      {% for c in collections %}
+      <div class="col-item" id="col-item-{{ c.id }}" onclick="CM.openCollection({{ c.id }})">
+        <div class="flex items-center gap-1">
+          <span style="font-size:.95rem">📁</span>
+          <span class="fw6 text-sm truncate" style="flex:1">{{ c.name }}</span>
+          <span class="badge bg-gray text-xs">{{ c.request_count }}</span>
+        </div>
+      </div>
+      {% else %}
+      <div id="empty-collections" style="padding:2rem 1rem;text-align:center;color:var(--text3)">
+        <div style="font-size:2rem;margin-bottom:.5rem">📁</div>
+        <div class="text-sm">No collections yet.<br>Click <strong>+ New Collection</strong> to start.</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- ── Right: collection detail ───────────────────────────── -->
+  <div id="col-detail" style="display:flex;flex-direction:column;gap:0;overflow:hidden">
+
+    <!-- Empty state -->
+    <div id="detail-empty" style="display:flex;align-items:center;justify-content:center;flex:1;color:var(--text3)">
+      <div style="text-align:center">
+        <div style="font-size:3rem;margin-bottom:.75rem">📁</div>
+        <div class="fw6">Select a collection</div>
+        <div class="text-sm text-muted">Click a collection on the left to manage it</div>
+      </div>
+    </div>
+
+    <!-- Detail panel (shown when collection selected) -->
+    <div id="detail-panel" style="display:none;flex-direction:column;height:100%;overflow:hidden">
+
+      <!-- Collection header -->
+      <div class="card" style="flex-shrink:0;margin-bottom:.75rem">
+        <div class="card-header" style="flex-wrap:nowrap">
+          <span id="col-name-display" class="card-title" style="font-size:1rem"></span>
+          <div class="ml-auto flex gap-half">
+            <button class="btn btn-secondary btn-sm" onclick="CM.runCollection()">▶ Run Collection</button>
+            <button class="btn btn-ghost btn-sm" onclick="CM.showSettings()">⚙ Settings</button>
+            <button class="btn btn-ghost btn-sm" onclick="CM.exportCollection()">⬇ Export</button>
+            <button class="btn btn-ghost btn-sm" onclick="CM.duplicateCollection()">⧉ Duplicate</button>
+            <button class="btn btn-danger btn-sm" onclick="CM.deleteCollection()">🗑 Delete</button>
+          </div>
+        </div>
+        <!-- Settings tabs -->
+        <div id="settings-panel" style="display:none;border-top:1px solid var(--border)">
+          <div style="display:flex;border-bottom:1px solid var(--border)">
+            {% for tab, label in [('vars','Variables'),('auth','Auth'),('pre','Pre-request Script'),('tests','Tests Script')] %}
+            <button class="btn btn-ghost btn-sm" style="border-radius:0;border-right:1px solid var(--border)"
+                    onclick="CM.showSettingsTab('{{ tab }}',this)">{{ label }}</button>
+            {% endfor %}
+          </div>
+          <!-- Variables -->
+          <div id="stab-vars" class="settings-tab" style="padding:.75rem 1rem">
+            <p class="text-muted text-sm" style="margin-bottom:.5rem">
+              Use <code style="background:var(--bg3);padding:.1rem .3rem;border-radius:3px">{{variable}}</code> anywhere in URLs, headers, body, params.
+            </p>
+            <table class="kv-table" style="width:100%">
+              <thead><tr><th style="width:26px"></th><th>Variable Name</th><th>Initial Value</th><th>Description</th><th style="width:28px"></th></tr></thead>
+              <tbody id="vars-tbody"></tbody>
+            </table>
+            <button class="kv-add" onclick="CM.addVarRow()">+ Add Variable</button>
+          </div>
+          <!-- Auth -->
+          <div id="stab-auth" class="settings-tab" style="display:none;padding:.75rem 1rem">
+            <div class="grid2" style="gap:.6rem;max-width:500px">
+              <div class="form-group">
+                <label class="label">Collection Auth Type</label>
+                <select id="col-auth-type" class="select" onchange="CM.onColAuthChange()">
+                  <option value="none">No Auth</option>
+                  <option value="bearer">Bearer Token</option>
+                  <option value="basic">Basic (Base64)</option>
+                  <option value="apikey">API Key</option>
+                </select>
+              </div>
+              <div id="col-auth-fields"></div>
+            </div>
+            <p class="text-muted text-sm" style="margin-top:.6rem">
+              Requests set to <em>Inherit</em> will use this collection-level auth.
+            </p>
+          </div>
+          <!-- Pre-request -->
+          <div id="stab-pre" class="settings-tab" style="display:none;padding:.75rem 1rem">
+            <p class="text-muted text-sm" style="margin-bottom:.4rem">Runs before every request in this collection.</p>
+            <div class="script-hint">pm.variables.set("token", "abc") &nbsp;·&nbsp; console.log("before")</div>
+            <textarea id="col-pre-script" class="textarea input-mono" rows="8" style="width:100%;font-size:.78rem"
+                      placeholder="// Pre-request script (runs before each request)&#10;// pm.variables.set('key', 'value')"></textarea>
+          </div>
+          <!-- Tests -->
+          <div id="stab-tests" class="settings-tab" style="display:none;padding:.75rem 1rem">
+            <p class="text-muted text-sm" style="margin-bottom:.4rem">Runs after every request in this collection.</p>
+            <div class="script-hint">pm.test("Status 200", () => pm.expect(pm.response.code).to_equal(200))</div>
+            <textarea id="col-tests-script" class="textarea input-mono" rows="8" style="width:100%;font-size:.78rem"
+                      placeholder="// Tests script (runs after each request)&#10;// pm.test('name', () => pm.expect(pm.response.code).to_equal(200))"></textarea>
+          </div>
+          <div style="padding:.6rem 1rem;border-top:1px solid var(--border);display:flex;gap:.5rem">
+            <button class="btn btn-primary btn-sm" onclick="CM.saveSettings()">Save Settings</button>
+            <button class="btn btn-ghost btn-sm" onclick="CM.hideSettings()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Requests list + editor -->
+      <div style="display:grid;grid-template-columns:260px 1fr;gap:.75rem;flex:1;min-height:0;overflow:hidden">
+
+        <!-- Request list -->
+        <div style="display:flex;flex-direction:column;overflow:hidden">
+          <div class="flex items-center gap-1" style="margin-bottom:.4rem;flex-shrink:0">
+            <span class="text-sm fw6">Requests</span>
+            <button class="btn btn-primary btn-xs ml-auto" onclick="CM.newRequest()">+ Add</button>
+          </div>
+          <div id="req-list" style="overflow-y:auto;flex:1;border:1px solid var(--border);border-radius:var(--radius)"></div>
+        </div>
+
+        <!-- Request editor -->
+        <div id="req-editor" style="overflow-y:auto;display:none;flex-direction:column;gap:.6rem">
+          <div class="card">
+            <div class="card-header" style="gap:.5rem;flex-wrap:nowrap">
+              <input id="req-name-inp" class="input" style="flex:1;font-weight:600" placeholder="Request name"/>
+              <button class="btn btn-success btn-sm" onclick="CM.saveRequest()">💾 Save</button>
+              <button class="btn btn-ghost btn-sm" onclick="CM.sendRequest()">▶ Send</button>
+              <button class="btn btn-danger btn-xs" onclick="CM.deleteRequest()">🗑</button>
+            </div>
+            <div class="card-body" style="padding:.75rem">
+              <!-- Method + URL -->
+              <div class="flex gap-1" style="margin-bottom:.6rem">
+                <select id="req-method" class="method-sel" style="width:100px">
+                  <option>GET</option><option>POST</option><option>PUT</option>
+                  <option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option>
+                </select>
+                <input id="req-url" class="url-input" placeholder="https://api.example.com/endpoint"/>
+              </div>
+
+              <!-- Tabs -->
+              <div style="display:flex;gap:.1rem;border-bottom:1px solid var(--border);margin-bottom:.6rem">
+                {% for tab, label in [('params','Params'),('auth','Auth'),('headers','Headers'),('body','Body'),('pre','Pre-request'),('tests','Tests'),('desc','Description')] %}
+                <button class="req-editor-tab {% if tab=='params' %}active{% endif %}"
+                        onclick="CM.showReqTab('{{ tab }}',this)">{{ label }}</button>
+                {% endfor %}
+              </div>
+
+              <!-- Params tab -->
+              <div class="req-editor-panel active" id="rep-params">
+                <table class="kv-table"><thead><tr><th style="width:26px"></th><th>Key</th><th>Value</th><th style="width:28px"></th></tr></thead>
+                  <tbody id="req-params-tbody"></tbody></table>
+                <button class="kv-add" onclick="window.kvReqParams.addRow()">+ Add</button>
+              </div>
+
+              <!-- Auth tab -->
+              <div class="req-editor-panel" id="rep-auth" style="display:none">
+                <div class="form-group" style="max-width:260px;margin-bottom:.6rem">
+                  <label class="label">Auth Type</label>
+                  <select id="req-auth-type" class="select" onchange="CM.onReqAuthChange()">
+                    <option value="inherit">Inherit from Collection</option>
+                    <option value="none">No Auth</option>
+                    <option value="bearer">Bearer Token</option>
+                    <option value="basic">Basic (Base64)</option>
+                    <option value="apikey">API Key</option>
+                  </select>
+                </div>
+                <div id="req-auth-fields"></div>
+              </div>
+
+              <!-- Headers tab -->
+              <div class="req-editor-panel" id="rep-headers" style="display:none">
+                <table class="kv-table"><thead><tr><th style="width:26px"></th><th>Key</th><th>Value</th><th style="width:28px"></th></tr></thead>
+                  <tbody id="req-headers-tbody"></tbody></table>
+                <button class="kv-add" onclick="window.kvReqHeaders.addRow()">+ Add</button>
+              </div>
+
+              <!-- Body tab -->
+              <div class="req-editor-panel" id="rep-body" style="display:none">
+                <div class="body-type-bar" style="margin-bottom:.6rem">
+                  <span class="text-muted text-sm fw6">Body:</span>
+                  {% for btype, blabel in [('none','none'),('json','JSON'),('form','form-urlencoded'),('multipart','form-data'),('xml','XML'),('graphql','GraphQL'),('raw','raw')] %}
+                  <button class="body-type-btn {% if btype=='none' %}active{% endif %}" data-type="{{ btype }}"
+                          onclick="CM.setReqBodyType('{{ btype }}',this)">{{ blabel }}</button>
+                  {% endfor %}
+                </div>
+                <div id="req-body-none" class="text-muted text-sm">No body (correct for GET, DELETE, HEAD etc.)</div>
+                <textarea id="req-body-area" class="textarea input-mono" rows="8" style="display:none;font-size:.79rem;width:100%"></textarea>
+                <div id="req-body-form-wrap" style="display:none">
+                  <table class="kv-table"><thead><tr><th style="width:26px"></th><th>Key</th><th>Value</th><th style="width:28px"></th></tr></thead>
+                    <tbody id="req-body-form-tbody"></tbody></table>
+                  <button class="kv-add" onclick="window.kvReqBodyForm.addRow()">+ Add</button>
+                </div>
+                <div id="req-body-multi-wrap" style="display:none">
+                  <table class="kv-table"><thead><tr><th style="width:26px"></th><th>Key</th><th>Value</th><th style="width:28px"></th></tr></thead>
+                    <tbody id="req-body-multi-tbody"></tbody></table>
+                  <button class="kv-add" onclick="window.kvReqBodyMulti.addRow()">+ Add</button>
+                </div>
+              </div>
+
+              <!-- Pre-request tab -->
+              <div class="req-editor-panel" id="rep-pre" style="display:none">
+                <div class="script-hint">pm.variables.set("key","value") &nbsp;·&nbsp; console.log(pm.variables.get("token"))</div>
+                <textarea id="req-pre-script" class="textarea input-mono" rows="8"
+                          style="width:100%;font-size:.78rem"
+                          placeholder="// Runs before this request&#10;// pm.variables.set('timestamp', Date.now())"></textarea>
+              </div>
+
+              <!-- Tests tab -->
+              <div class="req-editor-panel" id="rep-tests" style="display:none">
+                <div class="script-hint">pm.test("name", () => pm.expect(pm.response.code).to_equal(200))</div>
+                <textarea id="req-tests-script" class="textarea input-mono" rows="8"
+                          style="width:100%;font-size:.78rem"
+                          placeholder="// pm.test('Status is 200', () => pm.expect(pm.response.code).to_equal(200))&#10;// pm.test('Has token', () => pm.expect(pm.response.json()).to_include('token'))&#10;// pm.variables.set('authToken', pm.response.json()['token'])"></textarea>
+              </div>
+
+              <!-- Description tab -->
+              <div class="req-editor-panel" id="rep-desc" style="display:none">
+                <textarea id="req-description" class="textarea" rows="5" style="width:100%" placeholder="Describe what this request does…"></textarea>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Send response preview -->
+          <div class="card" id="req-resp-card" style="display:none">
+            <div class="card-header">
+              <span class="card-title">Response</span>
+              <span id="req-resp-status" class="fw6" style="margin-left:.5rem"></span>
+              <span id="req-resp-ms" class="text-muted text-sm"></span>
+              <div class="ml-auto flex gap-half">
+                <button class="btn btn-ghost btn-xs" onclick="CM.showRespTab('body',this)">Body</button>
+                <button class="btn btn-ghost btn-xs" onclick="CM.showRespTab('headers',this)">Headers</button>
+              </div>
+            </div>
+            <div style="padding:.75rem 1rem">
+              <pre id="req-resp-body" class="code-block" style="background:transparent;border:none;padding:0;max-height:200px;overflow-y:auto"></pre>
+              <pre id="req-resp-headers" class="code-block" style="background:transparent;border:none;padding:0;max-height:200px;overflow-y:auto;display:none"></pre>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Collection Runner Modal ─────────────────────────────────── -->
+<div id="runner-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;overflow-y:auto">
+  <div style="max-width:900px;margin:2rem auto;background:var(--bg1);border:1px solid var(--border2);border-radius:var(--radius-xl);overflow:hidden;box-shadow:var(--shadow-lg)">
+
+    <div style="padding:1rem 1.5rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:.75rem">
+      <span class="fw6" style="font-size:1rem">▶ Collection Runner</span>
+      <span id="runner-col-name" class="text-muted text-sm"></span>
+      <button class="btn btn-ghost btn-sm ml-auto" onclick="CM.closeRunner()">✕ Close</button>
+    </div>
+
+    <!-- Run controls -->
+    <div id="runner-config" style="padding:1rem 1.5rem;border-bottom:1px solid var(--border)">
+      <div class="grid2" style="gap:.6rem;margin-bottom:.75rem">
+        <div class="form-group">
+          <label class="label">Delay between requests (ms)</label>
+          <input id="runner-delay" class="input" type="number" value="0" min="0" max="5000"/>
+        </div>
+        <div class="form-group">
+          <label class="label">Iterations</label>
+          <input id="runner-iterations" class="input" type="number" value="1" min="1" max="100"/>
+        </div>
+      </div>
+
+      <!-- Request checklist -->
+      <div class="label" style="margin-bottom:.4rem">Select requests to run:</div>
+      <div id="runner-req-list" style="border:1px solid var(--border);border-radius:var(--radius);max-height:200px;overflow-y:auto"></div>
+
+      <div class="flex gap-1" style="margin-top:.75rem">
+        <button class="btn btn-primary" id="runner-start-btn" onclick="CM.startRun()">▶ Run</button>
+        <button class="btn btn-ghost btn-sm" onclick="CM.selectAllRequests(true)">Select All</button>
+        <button class="btn btn-ghost btn-sm" onclick="CM.selectAllRequests(false)">Deselect All</button>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="runner-results" style="display:none;padding:1rem 1.5rem">
+
+      <!-- Summary bar -->
+      <div id="runner-summary" style="display:grid;grid-template-columns:repeat(6,1fr);gap:.5rem;margin-bottom:1rem"></div>
+
+      <!-- Per-request results -->
+      <div id="runner-result-rows"></div>
+
+      <div style="margin-top:1rem;display:flex;gap:.5rem">
+        <button class="btn btn-secondary btn-sm" onclick="CM.downloadReport()">⬇ Download Report (JSON)</button>
+        <button class="btn btn-ghost btn-sm" onclick="CM.resetRunner()">↺ Run Again</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/collections.js"></script>
+<script>
+var kvReqParams, kvReqHeaders, kvReqBodyForm, kvReqBodyMulti;
+document.addEventListener('DOMContentLoaded', () => {
+  kvReqParams   = new KVEditor('req-params-tbody',    null);
+  kvReqHeaders  = new KVEditor('req-headers-tbody',   null);
+  kvReqBodyForm = new KVEditor('req-body-form-tbody', null);
+  kvReqBodyMulti= new KVEditor('req-body-multi-tbody',null);
+  CM.init();
+});
+</script>
+{% endblock %}
